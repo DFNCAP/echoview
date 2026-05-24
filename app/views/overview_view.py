@@ -68,7 +68,8 @@ class OverviewView(QWidget):
     def _create_file_selector(self) -> QWidget:
         layout = QHBoxLayout()
         self._dir_entry = QLineEdit(placeholderText="output directory")
-        self._dir_entry.setReadOnly(True)
+        self._dir_entry.editingFinished.connect(self._on_output_directory_changed)
+
         layout.addWidget(self._dir_entry)
 
         btn = QPushButton()
@@ -93,14 +94,18 @@ class OverviewView(QWidget):
 
         if path:
             resolved = str(Path(path).resolve())
-            self.output_directory_changed.emit(resolved)
+            self._dir_entry.setText(resolved)
+            self._on_output_directory_changed()
+
+    def _on_output_directory_changed(self) -> None:
+        self.output_directory_changed.emit(self._dir_entry.text())
 
     def _create_job_number_field(self) -> QLineEdit:
         job_number = QLineEdit(placeholderText="job number")
-        job_number.editingFinished.connect(self._on_job_number_edited)
+        job_number.editingFinished.connect(self._on_job_number_changed)
         return job_number
 
-    def _on_job_number_edited(self) -> None:
+    def _on_job_number_changed(self) -> None:
         self.job_number_changed.emit(self._job_number.text())
 
     def _create_device_scan_btn(self) -> QPushButton:
@@ -111,9 +116,10 @@ class OverviewView(QWidget):
     def _on_device_scan_pressed(self) -> None:
         self.device_scan_requested.emit()
 
-    @Slot(str)
     def set_directory_label(self, directory: str) -> None:
         self._dir_entry.setText(directory)
+        self.output_directory_changed.emit(directory)
 
     def set_job_number(self, job_number: str) -> None:
         self._job_number.setText(job_number)
+        self.job_number_changed.emit(job_number)

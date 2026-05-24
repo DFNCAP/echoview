@@ -2,15 +2,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QObject
-
-from app.devices import android
-
-
-class ConnectedDevicesController(QObject):
-    def __init__(self) -> None:
-        super().__init__()
-
 
 @dataclass
 class Device(ABC):
@@ -31,7 +22,7 @@ class Device(ABC):
         pass
 
     @abstractmethod
-    def backup(self, output_file: str | Path) -> str:
+    def backup(self, output_file: Path) -> Path:
         """Take a backup and return the output path."""
         pass
 
@@ -39,39 +30,3 @@ class Device(ABC):
     def get_info(self) -> str:
         """Get device information as a formatted string."""
         pass
-
-
-@dataclass
-class AndroidDevice(Device):
-    """Android device implementation."""
-
-    def screenshot(self, output_file: Path) -> Path:
-        """Take Android screenshot."""
-
-        return android.screenshot(self.identifier, output_file)
-
-    def backup(self, output_file: str | Path) -> str:
-
-        return android.backup(self.identifier, output_file)
-
-    def get_info(self) -> str:
-        """Get Android device info."""
-        return f"{self.os} - {self.device_name} ({self.serial})"
-
-
-@dataclass
-class iOSDevice(Device):
-    """iOS device implementation."""
-
-    def screenshot(self, output_directory: str) -> str:
-        """Take iOS screenshot."""
-        from app.devices.ios import screenshot as ios_screenshot
-
-        return ios_screenshot(self.serial, output_directory)
-
-    def backup(self, output_file: str) -> str:
-        return output_file
-
-    def get_info(self) -> str:
-        """Get iOS device info."""
-        return f"{self.os} - {self.device_name} ({self.serial})"

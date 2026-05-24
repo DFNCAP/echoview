@@ -9,9 +9,6 @@ class OverviewModel(QObject):
     DEFAULT_WIDTH = 900
     DEFAULT_HEIGHT = 600
 
-    output_directory_updated = Signal(str)
-    job_number_changed = Signal(str)
-
     @staticmethod
     def validate_window_custom_size(width: int, height: int) -> tuple[int, int]:
         """Validate custom width and height, resetting to defaults if out of range."""
@@ -41,7 +38,6 @@ class OverviewModel(QObject):
         """Set the output directory and emit a change signal if modified."""
         if self._output_directory != directory:
             self._output_directory = directory
-            self.output_directory_updated.emit(directory)
 
     @property
     def job_number(self) -> str:
@@ -53,7 +49,6 @@ class OverviewModel(QObject):
         """Set the job number and emit a change signal if modified."""
         if self._job_number != number:
             self._job_number = number
-            self.job_number_changed.emit(number)
 
     def load_settings(self) -> None:
         pass

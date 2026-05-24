@@ -1,9 +1,28 @@
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from loguru import logger
 
-from app.devices.devices import AndroidDevice
+from app.devices.devices import Device
+
+
+@dataclass
+class AndroidDevice(Device):
+    """Android device implementation."""
+
+    def screenshot(self, output_file: Path) -> Path:
+        """Take Android screenshot."""
+
+        return screenshot(self.identifier, output_file)
+
+    def backup(self, output_file: Path) -> Path:
+
+        return backup(self.identifier, output_file)
+
+    def get_info(self) -> str:
+        """Get Android device info."""
+        return f"{self.os} - {self.device_name} ({self.serial})"
 
 
 def get_connected_devices() -> list[AndroidDevice]:
@@ -36,7 +55,7 @@ def screenshot(serial: str, output_file: Path) -> Path:
     return output_file
 
 
-def backup(serial: str, output_file: str | Path) -> str:
+def backup(serial: str, output_file: Path) -> Path:
     subprocess.run(
         [
             "adb",
@@ -49,7 +68,7 @@ def backup(serial: str, output_file: str | Path) -> str:
             "-system",
             "-apk",
             "-f",
-            output_file,
+            str(output_file),
         ],
         capture_output=True,
     )

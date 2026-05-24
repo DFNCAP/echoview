@@ -6,19 +6,17 @@ from app.devices.devices import Device
 
 
 class DevicesModel(QObject):
-    connected_devices_updated = Signal(object)
+    devices_changed = Signal()
 
     def __init__(self) -> None:
         super().__init__()
-
-        self._connected_devices: List[Device] = []
+        self._devices: List[Device] = []
 
     @property
-    def connected_devices(self) -> List[Device]:
-        return self._connected_devices
+    def devices(self) -> List[Device]:
+        return self._devices
 
-    @connected_devices.setter
-    def connected_devices(self, connected_devices: List[Device]) -> None:
-        if self._connected_devices != connected_devices:
-            self._connected_devices = connected_devices
-            self.connected_devices_updated.emit(connected_devices)
+    def set_devices(self, devices: List[Device]) -> None:
+        if self._devices != devices:
+            self._devices = devices
+            self.devices_changed.emit()
