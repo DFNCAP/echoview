@@ -1,9 +1,10 @@
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
 from loguru import logger
 
-from app.devices.devices import Device
+from app.devices.devices import Device, StatusReporter
 
 
 @dataclass
@@ -16,7 +17,12 @@ class iOSDevice(Device):
             "Screenshot functionality is not available for iOS devices"
         )  # return ios.screenshot(self.serial, output_directory)
 
-    def backup(self, output_file: Path) -> Path:
+    def backup(
+        self,
+        output_file: Path,
+        reporter: StatusReporter | None = None,
+        cancelled: threading.Event | None = None,
+    ) -> Path:
         raise NotImplementedError(
             "Backup functionality is not available for iOS devices"
         )

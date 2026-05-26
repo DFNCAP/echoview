@@ -1,4 +1,4 @@
-from typing import List
+from collections.abc import Callable
 
 from loguru import logger
 from PySide6.QtCore import Signal, Slot
@@ -11,69 +11,26 @@ from PySide6.QtWidgets import (
 )
 
 from app.devices.devices import Device
-from app.views.dialogue import show_warning
-
-
-class DeviceWidget(QWidget):
-    """Widget for displaying a single device with screenshot button."""
-
-    screenshot_requested = Signal(Device)
-    backup_requested = Signal(Device)
-
-    def __init__(self, device: Device) -> None:
-        super().__init__()
-        self._device = device
-        self._device_id = device.identifier
-
-        layout = QHBoxLayout()
-
-        # Device info label
-        device_text = device.get_info()
-        self._label = QLabel(device_text)
-        layout.addWidget(self._label)
-
-        # Screenshot button
-        self._screenshot_btn = QPushButton("Screenshot")
-        self._screenshot_btn.clicked.connect(self._on_screenshot_clicked)
-        layout.addWidget(self._screenshot_btn)
-
-        self._backup_btn = QPushButton("Backup")
-        self._backup_btn.clicked.connect(self._on_backup_clicked)
-        layout.addWidget(self._backup_btn)
-
-        layout.addStretch()
-        self.setLayout(layout)
-
-    def _on_screenshot_clicked(self) -> None:
-        """Handle screenshot button click."""
-        logger.info(
-            f"Screenshot requested for {self._device.os} device: {self._device.identifier}"
-        )
-        self.screenshot_requested.emit(self._device)
-
-    def _on_backup_clicked(self) -> None:
-        logger.info(
-            f"Backup requested for {self._device.os} device: {self._device.identifier}"
-        )
-        self.backup_requested.emit(self._device)
-
-    def set_busy(self, busy: bool) -> None:
-        """Enable or disable buttons based on operation state."""
-        self._screenshot_btn.setEnabled(not busy)
-        self._backup_btn.setEnabled(not busy)
+from app.views.device_widget import DeviceWidget
+from app.views.dialogue_box import show_warning
+from app.views.message_box import BinaryChoiceDialog
 
 
 class DevicesView(QWidget):
-    screenshot_requested = Signal(Device)
     backup_requested = Signal(Device)
-    operation_error = Signal(str, str)  # title, message
+    extract_contacts_requested = Signal(Device)
+    extract_device_info_requested = Signal(Device)
+    extract_device_logs_requested = Signal(Device)
+    screen_recording_requested = Signal(Device)
+    screenshot_requested = Signal(Device)
+    cancel_requested = Signal(Device)
 
     def __init__(self) -> None:
         super().__init__()
         logger.debug("Initializing DevicesView")
 
         self._layout = QVBoxLayout()
-        self._device_widgets: List[DeviceWidget] = []
+        self._device_widgets: list[DeviceWidget] = []
 
         # Title
         title = QLabel("Connected Devices")
@@ -90,10 +47,8 @@ class DevicesView(QWidget):
         self.setLayout(self._layout)
         self._device_widget_map: dict[str, DeviceWidget] = {}
 
-        # Wire error signal to show_warning
-        self.operation_error.connect(self._on_operation_error)
-
-    def update_devices(self, devices: List[Device]) -> None:
+    @Slot(object)
+    def update_devices(self, devices: list[Device]) -> None:
         """Update the device list display."""
         # Clear existing widgets
         for widget in self._device_widgets:
@@ -104,8 +59,9 @@ class DevicesView(QWidget):
         # Add new device widgets
         for device in devices:
             device_widget = DeviceWidget(device)
-            device_widget.screenshot_requested.connect(self.screenshot_requested.emit)
             device_widget.backup_requested.connect(self.backup_requested.emit)
+            device_widget.screenshot_requested.connect(self.screenshot_requested.emit)
+            device_widget.cancel_requested.connect(self.cancel_requested)
             self._devices_layout.addWidget(device_widget)
             self._device_widgets.append(device_widget)
             self._device_widget_map[device.identifier] = device_widget
@@ -117,10 +73,16 @@ class DevicesView(QWidget):
         if device_id in self._device_widget_map:
             self._device_widget_map[device_id].set_busy(busy)
 
-    def show_operation_failed_warning(self, title: str, message: str) -> None:
+    def show_operation_waring(self, title: str, message: str) -> None:
         show_warning(title, message)
 
-    @Slot(str, str)
-    def _on_operation_error(self, title: str, message: str) -> None:
-        """Handle operation error signal."""
-        show_warning(title, message)
+    def show_binary_choice(self, title: str, text: str, information: str) -> bool:
+        binary_diag = BinaryChoiceDialog(
+            title=title,
+            text=text,
+            information=information,
+            positive_text="Yes",
+            negative_text="No",
+        )
+
+        return binary_diag.exec_is_positive()

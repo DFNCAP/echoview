@@ -3,12 +3,10 @@ import sys
 from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QApplication
 
-from app.controllers.connected_devices_controller import ConnectedDevicesController
 from app.controllers.devices_controller import DevicesController
 from app.controllers.overview_controller import OverviewController
 from app.models.devices_model import DevicesModel
 from app.models.overview_model import OverviewModel
-from app.utils.event_bus import EventBus
 from app.views.devices_view import DevicesView
 from app.views.main_window_view import MainWindow
 from app.views.overview_view import OverviewView
@@ -28,6 +26,9 @@ class AppController(QObject):
         self._create_views()
         self._create_main_window()
         self._create_controllers()
+        self._connect_signals()
+
+        self.app.aboutToQuit.connect(self._on_about_to_quit)
 
     def _set_theme(self) -> None:
         self.app.setStyle("Fusion")
@@ -36,7 +37,6 @@ class AppController(QObject):
     def _create_models(self) -> None:
         self.overview_model = OverviewModel()
         self.devices_model = DevicesModel()
-        self.event_bus = EventBus()
 
     def _create_views(self) -> None:
         self.overview_view = OverviewView()
@@ -72,8 +72,10 @@ class AppController(QObject):
 
         # Do initial device scan
         self.devices_controller.start_scan()
-        # self.main_window.initialise_content(is_initial=True)
         return self.app.exec()
+
+    def _on_about_to_quit(self) -> None:
+        self.devices_controller.shutdown()
 
     def quit(self) -> None:
         self.app.quit()

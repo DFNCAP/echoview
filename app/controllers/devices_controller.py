@@ -1,35 +1,50 @@
+import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from enum import Enum
 from pathlib import Path
 
 from loguru import logger
 from PySide6.QtCore import QObject, Signal, Slot
 
 from app.devices import android, ios
-from app.devices.devices import Device
+from app.devices.devices import Device, StatusReporter
 from app.models.devices_model import DevicesModel
-from app.utils.event_bus import EventBus
 from app.utils.generic import get_timestamp
 from app.views.devices_view import DevicesView
 
 
+class OperationType(Enum):
+    DEVICE_SCAN = "device_scan"
+    SCREENSHOT = "screenshot"
+    BACKUP = "backup"
+
+
 class DeviceOperationRunner(QObject):
-    operation_started = Signal(str, str)  # device_id, operation_type
-    operation_finished = Signal(str, str, object)  # device_id, operation_type, result
-    operation_error = Signal(str, str, str)  # device_id, operation_type, error_message
+    operation_started = Signal(str, OperationType)
+    operation_finished = Signal(str, OperationType, object)
+    operation_error = Signal(str, OperationType, str)
 
     def __init__(self, max_workers: int = 4) -> None:
         super().__init__()
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
 
     def submit(
-        self, device_id: str, operation_type: str, operation: Callable[..., object]
+        self,
+        device_id: str,
+        operation_type: OperationType,
+        operation: Callable[..., object],
     ) -> None:
         self._executor.submit(self._run, device_id, operation_type, operation)
 
     def _run(
-        self, device_id: str, operation_type: str, operation: Callable[..., object]
+        self,
+        device_id: str,
+        operation_type: OperationType,
+        operation: Callable[..., object],
     ) -> None:
+
         self.operation_started.emit(device_id, operation_type)
         try:
             result = operation()
@@ -38,7 +53,8 @@ class DeviceOperationRunner(QObject):
             self.operation_error.emit(device_id, operation_type, str(e))
 
     def shutdown(self) -> None:
-        self._executor.shutdown(wait=False)
+        android.kill_server()
+        self._executor.shutdown(wait=False, cancel_futures=True)
 
 
 class DevicesController(QObject):
@@ -48,31 +64,30 @@ class DevicesController(QObject):
         self._view = view
         self._model = model
 
-        self._output_directory: str = ""
         self._job_number: str = ""
 
         self._runner = DeviceOperationRunner()
+        self._cancelled = threading.Event()
 
-        self._view.screenshot_requested.connect(self._on_screenshot_requested)
         self._view.backup_requested.connect(self._on_backup_requested)
+        self._view.screenshot_requested.connect(self._on_screenshot_requested)
+        self._view.cancel_requested.connect(self._on_cancel_requested)
 
         # Wire model to view
-        self._model.devices_changed.connect(
-            lambda: self._view.update_devices(self._model.devices)
-        )
+        self._model.devices_changed.connect(self._view.update_devices)
 
         # Subscribe to event bus for operation events
         self._runner.operation_started.connect(self._on_operation_started)
         self._runner.operation_finished.connect(self._on_operation_finished)
         self._runner.operation_error.connect(self._on_operation_failed)
 
-    @Slot(str)
-    def set_output_directory(self, directory: str) -> None:
-        self._output_directory = directory
+    @Slot(Path)
+    def set_output_directory(self, directory: Path) -> None:
+        self._model.output_directory = directory
 
     @Slot(str)
     def set_job_number(self, job_number: str) -> None:
-        self._job_number = job_number
+        self._model.job_number = job_number
 
     @Slot()
     def start_scan(self) -> None:
@@ -90,67 +105,96 @@ class DevicesController(QObject):
 
             return devices
 
-        self._runner.submit("", "device_scan", scan_operation)
+        self._runner.submit("", OperationType.DEVICE_SCAN, scan_operation)
 
     @Slot(str, str)
-    def _on_operation_started(self, device_id: str, operation_type: str) -> None:
-        """Handle operation started from ConnectedDevicesController."""
+    def _on_operation_started(
+        self, device_id: str, operation_type: OperationType
+    ) -> None:
         logger.info(f"Started operation {operation_type} for device {device_id}")
         self._view.set_device_busy(device_id, True)
 
     @Slot(str, str, object)
     def _on_operation_finished(
-        self, device_id: str, operation_type: str, result: object
+        self, device_id: str, operation_type: OperationType, result: object
     ) -> None:
-        """Handle operation finished from ConnectedDevicesController."""
+        logger.info(f"Finished operation {operation_type} for device {device_id}")
         self._view.set_device_busy(device_id, False)
 
         # Special handling for device scan - update model with device list
-        if operation_type == "device_scan":
+        if operation_type == OperationType.DEVICE_SCAN:
             devices = result if isinstance(result, list) else []
             logger.info(f"DevicesController received {len(devices)} devices from scan")
-            self._model.set_devices(devices)
-            self._view.update_devices(self._model.devices)
+            self._model.devices = devices
 
     @Slot(str, str, str)
     def _on_operation_failed(
-        self, device_id: str, operation_type: str, error: str
+        self, device_id: str, operation_type: OperationType, error: str
     ) -> None:
-        """Handle operation failed from ConnectedDevicesController."""
-        self._view.set_device_busy(device_id, False)
-        self._view.show_operation_failed_warning(
-            f"{operation_type.capitalize()} failed", error
+        logger.warning(
+            f"Error during operation {operation_type} for device {device_id}"
         )
-
-    # @Slot(Device)
-    # def _on_screenshot_requested(self, device: Device) -> None:
-    #     """Handle screenshot request for a device and emit signal."""
-    #     logger.info(f"Screenshot requested for {device.os} device: {device.identifier}")
-    #     self._event_bus.screenshot_requested.emit(device)
-
-    @Slot(Device)
-    def _on_screenshot_requested(self, device: Device) -> None:
-        """Take a screenshot of the specified device."""
-        logger.debug(f"Taking screenshot of {device.os} device: {device.serial}")
-        output_file = Path(self._output_directory) / f"screenshot_{get_timestamp()}.png"
-
-        def screenshot_operation() -> Path:
-            return device.screenshot(output_file)
-
-        self._runner.submit(device.identifier, "screenshot", screenshot_operation)
-
-    # @Slot(Device)
-    # def _on_backup_requested(self, device: Device) -> None:
-    #     logger.info(f"Backup requested for {device.os} device: {device.identifier}")
-    #     self._event_bus.backup_requested.emit(device)
+        self._view.set_device_busy(device_id, False)
+        self._view.show_operation_waring(
+            f"{operation_type.value.capitalize()} failed", error
+        )
 
     @Slot(Device)
     def _on_backup_requested(self, device: Device) -> None:
         """Take a backup of the specified device."""
+        self._cancelled.clear()
         logger.debug(f"Taking backup of {device.os} device: {device.identifier}")
-        output_file = Path(self._output_directory) / f"backup_{get_timestamp()}.ab"
+        output_file = (
+            self._model.output_directory
+            / (self._model.job_number or device.identifier)
+            / "backups"
+            / f"backup_{get_timestamp()}"
+        )
+
+        reporter = StatusReporter()
+        widget = self._view._device_widget_map.get(device.identifier)
+        if widget:
+            reporter.status_changed.connect(widget.set_status)
+            reporter.progress_changed.connect(widget.set_progress)
 
         def backup_operation() -> Path:
-            return device.backup(output_file)
+            return device.backup(output_file.resolve(), reporter, self._cancelled)
 
-        self._runner.submit(device.identifier, "backup", backup_operation)
+        if self._view.show_binary_choice(
+            title="Device Backup",
+            text="Device Backup",
+            information="This operation may take a long time to complete. Proceed?",
+        ):
+            self._runner.submit(
+                device.identifier, OperationType.BACKUP, backup_operation
+            )
+        else:
+            logger.info("Setting device not busy")
+            self._view.set_device_busy(device.identifier, False)
+
+    @Slot(Device)
+    def _on_screenshot_requested(self, device: Device) -> None:
+        """Take a screenshot of the specified device."""
+
+        output_file = (
+            self._model.output_directory
+            / (self._model.job_number or device.identifier)
+            / "screenshots"
+            / f"screenshot_{get_timestamp()}.png"
+        )
+
+        def screenshot_operation() -> Path:
+            return device.screenshot(output_file.resolve())
+
+        self._runner.submit(
+            device.identifier, OperationType.SCREENSHOT, screenshot_operation
+        )
+
+    @Slot(Device)
+    def _on_cancel_requested(self, device: Device) -> None:
+        self._cancelled.set()
+        android.kill_server()
+
+    def shutdown(self) -> None:
+        self._cancelled.set()
+        self._runner.shutdown()

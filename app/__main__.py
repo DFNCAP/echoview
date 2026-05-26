@@ -29,7 +29,7 @@ from loguru import logger
 
 from app.controllers.app_controller import AppController
 from app.utils.app_info import AppInfo
-from app.views.dialogue import show_fatal_error
+from app.views.dialogue_box import show_fatal_error
 
 SYSTEM = platform.system()
 
@@ -119,6 +119,12 @@ def main_thread() -> None:
     try:
         app_controller = AppController()
         sys.exit(app_controller.run())
+    except KeyboardInterrupt:
+        logger.warning("Interrupted by user")
+        if app_controller:
+            app_controller.quit()
+    except SystemExit:
+        logger.warning("Exiting application")
     except Exception as e:
         # Catch exceptions during initial application instantiation
         # Uncaught exceptions during the application loop are caught with excepthook
@@ -134,7 +140,6 @@ def main_thread() -> None:
         show_fatal_error(details=stacktrace)
     finally:
         logger.info("Exiting application")
-        sys.exit()
 
 
 if __name__ == "__main__":

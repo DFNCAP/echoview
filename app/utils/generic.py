@@ -6,7 +6,7 @@ from pathlib import Path
 
 from loguru import logger
 
-import app.views.dialogue as dialogue
+import app.views.dialogue_box as dialogue
 
 
 def get_timestamp() -> str:

@@ -25,7 +25,7 @@ LOGO = """
 
 
 class OverviewView(QWidget):
-    output_directory_changed = Signal(str)
+    output_directory_changed = Signal(Path)
     job_number_changed = Signal(str)
     device_scan_requested = Signal()
 
@@ -93,12 +93,12 @@ class OverviewView(QWidget):
         )
 
         if path:
-            resolved = str(Path(path).resolve())
-            self._dir_entry.setText(resolved)
+            resolved = Path(path).resolve()
+            self._dir_entry.setText(str(resolved))
             self._on_output_directory_changed()
 
     def _on_output_directory_changed(self) -> None:
-        self.output_directory_changed.emit(self._dir_entry.text())
+        self.output_directory_changed.emit(Path(self._dir_entry.text()).resolve())
 
     def _create_job_number_field(self) -> QLineEdit:
         job_number = QLineEdit(placeholderText="job number")
@@ -114,12 +114,13 @@ class OverviewView(QWidget):
         return btn
 
     def _on_device_scan_pressed(self) -> None:
+        logger.info("Requesting device scan from view")
         self.device_scan_requested.emit()
 
-    def set_directory_label(self, directory: str) -> None:
-        self._dir_entry.setText(directory)
-        self.output_directory_changed.emit(directory)
+    # def set_directory_label(self, directory: str) -> None:
+    #     self._dir_entry.setText(directory)
+    #     self.output_directory_changed.emit(directory)
 
-    def set_job_number(self, job_number: str) -> None:
-        self._job_number.setText(job_number)
-        self.job_number_changed.emit(job_number)
+    # def set_job_number(self, job_number: str) -> None:
+    #     self._job_number.setText(job_number)
+    #     self.job_number_changed.emit(job_number)

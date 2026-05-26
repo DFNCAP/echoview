@@ -1,4 +1,7 @@
-from PySide6.QtCore import QObject, Signal
+from pathlib import Path
+
+from loguru import logger
+from PySide6.QtCore import QObject
 
 from app.utils.app_info import AppInfo
 
@@ -23,20 +26,21 @@ class OverviewModel(QObject):
 
         self._settings_file = AppInfo().app_settings_file
 
-        self._output_directory: str = ""
+        self._output_directory: Path = Path()
         self._job_number: str = ""
 
         self.load_settings()
 
     @property
-    def output_directory(self) -> str:
+    def output_directory(self) -> Path:
         """Return the currently selected output directory."""
         return self._output_directory
 
     @output_directory.setter
-    def output_directory(self, directory: str) -> None:
+    def output_directory(self, directory: Path) -> None:
         """Set the output directory and emit a change signal if modified."""
         if self._output_directory != directory:
+            logger.info(f"Output directory changed to {directory}")
             self._output_directory = directory
 
     @property

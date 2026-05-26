@@ -1,6 +1,14 @@
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
+
+from PySide6.QtCore import QObject, Signal
+
+
+class StatusReporter(QObject):
+    status_changed = Signal(str)
+    progress_changed = Signal(int, int)
 
 
 @dataclass
@@ -22,7 +30,12 @@ class Device(ABC):
         pass
 
     @abstractmethod
-    def backup(self, output_file: Path) -> Path:
+    def backup(
+        self,
+        output_file: Path,
+        reporter: StatusReporter | None = None,
+        cancelled: threading.Event | None = None,
+    ) -> Path:
         """Take a backup and return the output path."""
         pass
 
