@@ -16,6 +16,13 @@
 # Version info
 # nuitka-project-if: os.path.exists("{MAIN_DIRECTORY}/../version.xml"):
 #   nuitka-project: --include-data-file={MAIN_DIRECTORY}/../version.xml=version.xml
+
+# scrcpy
+# nuitka-project-if: {OS} == "Linux":
+#   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../scrcpy/*.tar.gz=scrcpy/scrcpy.tar.gz
+# nuitka-project-if: {OS} == "Windows":
+#   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../scrcpy/*.zip=scrcpy/scrcpy.zip
+
 import os
 import platform
 import sys
@@ -70,50 +77,6 @@ def handle_exception(
 sys.excepthook = handle_exception
 
 
-# class TextProgressBar(QtWidgets.QProgressBar):
-#     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-#         super().paintEvent(event)
-#         painter = QtGui.QPainter(self)
-#         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.format())
-
-
-# class MyWidget(QtWidgets.QWidget):
-#     """_summary_
-
-#     :param QtWidgets: _description_
-#     :type QtWidgets: _type_
-#     """
-
-#     def __init__(self) -> None:
-#         super().__init__()
-
-#         self.hello = ["Hallo Welt", "Hei maailma", "Hola Mundo", "Привет мир"]
-
-#         self.button = QtWidgets.QPushButton("Click me!")
-#         self.text = QtWidgets.QLabel(
-#             "Hello World", alignment=Qt.AlignmentFlag.AlignCenter
-#         )
-#         self.version = QtWidgets.QLabel(
-#             AppInfo().app_name, alignment=Qt.AlignmentFlag.AlignCenter
-#         )
-
-#         self.prog = TextProgressBar(
-#             minimum=0, maximum=0, format="Hello", textVisible=True
-#         )
-
-#         self._layout = QtWidgets.QVBoxLayout(self)
-#         self._layout.addWidget(self.text)
-#         self._layout.addWidget(self.button)
-#         self._layout.addWidget(self.version)
-#         self._layout.addWidget(self.prog)
-
-#         self.button.clicked.connect(self.magic)
-
-#     @Slot()
-#     def magic(self) -> None:
-#         self.text.setText(random.choice(self.hello))
-
-
 def main_thread() -> None:
     app_controller = None
     try:
@@ -140,6 +103,11 @@ def main_thread() -> None:
         show_fatal_error(details=stacktrace)
     finally:
         logger.info("Exiting application")
+
+
+def unpack_scrcpy() -> None:
+    if SYSTEM == "Linux":
+        pass
 
 
 if __name__ == "__main__":
@@ -216,6 +184,8 @@ if __name__ == "__main__":
         logger.debug("Running using Nuitka bundle")
 
     logger.info(f"Initialising EchoView application: {AppInfo().app_version}")
+
+    # Unpack scrcpy
 
     main_thread()
 

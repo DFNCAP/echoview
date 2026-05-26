@@ -66,6 +66,8 @@ class DevicesController(QObject):
 
         self._job_number: str = ""
 
+        self._cancel_events: dict[str, threading.Event] = {}
+
         self._runner = DeviceOperationRunner()
         self._cancelled = threading.Event()
 
@@ -119,6 +121,8 @@ class DevicesController(QObject):
         self, device_id: str, operation_type: OperationType, result: object
     ) -> None:
         logger.info(f"Finished operation {operation_type} for device {device_id}")
+        # Clear the event flag signal and remove it from the dict
+
         self._view.set_device_busy(device_id, False)
 
         # Special handling for device scan - update model with device list
@@ -142,7 +146,6 @@ class DevicesController(QObject):
     @Slot(Device)
     def _on_backup_requested(self, device: Device) -> None:
         """Take a backup of the specified device."""
-        self._cancelled.clear()
         logger.debug(f"Taking backup of {device.os} device: {device.identifier}")
         output_file = (
             self._model.output_directory
@@ -157,8 +160,16 @@ class DevicesController(QObject):
             reporter.status_changed.connect(widget.set_status)
             reporter.progress_changed.connect(widget.set_progress)
 
+        # Create the device-specific event handler or reset it if it exists to prevent needless reallocation
+        if device.identifier not in self._cancel_events:
+            self._cancel_events[device.identifier] = threading.Event()
+        else:
+            self._cancel_events[device.identifier].clear()
+
         def backup_operation() -> Path:
-            return device.backup(output_file.resolve(), reporter, self._cancelled)
+            return device.backup(
+                output_file.resolve(), reporter, self._cancel_events[device.identifier]
+            )
 
         if self._view.show_binary_choice(
             title="Device Backup",
@@ -192,9 +203,12 @@ class DevicesController(QObject):
 
     @Slot(Device)
     def _on_cancel_requested(self, device: Device) -> None:
-        self._cancelled.set()
-        android.kill_server()
+        # Signal specific event to cancel
+        if device.identifier in self._cancel_events:
+            self._cancel_events[device.identifier].set()
 
     def shutdown(self) -> None:
-        self._cancelled.set()
+        # Kill all pending tasks before shutting down
+        for _, event in self._cancel_events.items():
+            event.set()
         self._runner.shutdown()

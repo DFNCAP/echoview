@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -77,6 +78,9 @@ class DeviceWidget(QWidget):
 
         self._cancel_btn = QPushButton("Cancel")
         self._cancel_btn.hide()
+        policy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        policy.setRetainSizeWhenHidden(True)
+        self._cancel_btn.setSizePolicy(policy)
         self._cancel_btn.setStyleSheet(
             "QPushButton { background-color: red; color: white; }"
         )
