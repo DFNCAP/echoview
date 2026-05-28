@@ -1,6 +1,10 @@
 import os
+import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -63,3 +67,55 @@ def platform_specific_open(path: str | Path) -> None:
         subprocess.Popen(["xdg-open", path], env=dict(os.environ, LD_LIBRARY_PATH=""))
     else:
         logger.error("Attempting to open directory on an unknown system")
+
+
+def extract_and_strip(archive: Path, destination: Path) -> None:
+    """Extract archive to destination, stripping the top-level folder.
+
+    This handles both .tar.gz and .zip archives, extracting their contents
+    directly into the destination folder without the intermediate directory
+    that archives typically contain.
+
+    :param archive: Path to the archive file
+    :type archive: Path
+    :param destination: Directory where contents should be extracted
+    :type destination: Path
+    """
+    destination.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+
+        # Extract to temp directory
+        if archive.suffix == ".zip":
+            with zipfile.ZipFile(archive, "r") as zip_ref:
+                zip_ref.extractall(temp_path)
+        elif archive.suffixes == [".tar", ".gz"] or archive.name.endswith(".tar.gz"):
+            with tarfile.open(archive, "r:gz") as tar_ref:
+                tar_ref.extractall(temp_path)
+        else:
+            raise ValueError(f"Unsupported archive format: {archive}")
+
+        # Move contents from the extracted subdirectory to destination
+        extracted_dirs = [d for d in temp_path.iterdir() if d.is_dir()]
+        if extracted_dirs:
+            # Move contents from the first subdirectory
+            for item in extracted_dirs[0].iterdir():
+                target = destination / item.name
+                if target.exists():
+                    if target.is_dir():
+                        shutil.rmtree(target)
+                    else:
+                        target.unlink()
+                shutil.move(str(item), str(destination))
+
+
+def extract(archive: Path, destination: Path) -> None:
+    if archive.suffix == ".zip":
+        with zipfile.ZipFile(archive, "r") as zip_ref:
+            zip_ref.extractall(destination)
+    elif archive.suffixes == [".tar", ".gz"] or archive.name.endswith(".tar.gz"):
+        with tarfile.open(archive, "r:gz") as tar_ref:
+            tar_ref.extractall(destination)
+    else:
+        raise ValueError(f"Unsupported archive format: {archive}")

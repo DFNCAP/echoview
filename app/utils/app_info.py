@@ -1,4 +1,5 @@
 import os
+import platform
 import sys
 from pathlib import Path
 
@@ -87,6 +88,33 @@ class AppInfo:
         # Create backup directories
 
         self._is_initialized: bool = True
+
+    @property
+    def adb_path(self) -> Path:
+        """Get the path to the ADB executable."""
+        system = platform.system()
+        if system == "Windows":
+            return self._application_folder / "scrcpy" / "adb.exe"
+        else:
+            return self._application_folder / "scrcpy" / "adb"
+
+    @property
+    def scrcpy_path(self) -> Path:
+        """Get the path to the scrcpy executable."""
+        system = platform.system()
+        if system == "Windows":
+            return self._application_folder / "scrcpy" / "scrcpy.exe"
+        else:
+            return self._application_folder / "scrcpy" / "scrcpy"
+
+    @property
+    def goios_path(self) -> Path:
+        """Get the path to the scrcpy executable."""
+        system = platform.system()
+        if system == "Windows":
+            return self._application_folder / "go-ios" / "ios.exe"
+        else:
+            return self._application_folder / "go-ios" / "ios-amd64"
 
     @property
     def app_name(self) -> str:

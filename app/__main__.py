@@ -19,9 +19,29 @@
 
 # scrcpy
 # nuitka-project-if: {OS} == "Linux":
-#   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../scrcpy/*.tar.gz=scrcpy/scrcpy.tar.gz
+#   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../scrcpy/scrcpy-linux*.tar.gz=scrcpy/
 # nuitka-project-if: {OS} == "Windows":
-#   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../scrcpy/*.zip=scrcpy/scrcpy.zip
+#   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../scrcpy/scrcpy-win64*.zip=scrcpy/
+
+# go-ios
+# nuitka-project-if: {OS} == "Linux":
+#   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../go-ios/go-ios-linux*.zip=go-ios/
+# nuitka-project-if: {OS} == "Windows":
+#   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../go-ios/go-ios-win*.zip=go-ios/
+
+# wintun
+# nuitka-project-if: {OS} == "Windows":
+#   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../wintun/wintun*.zip=wintun/
+
+# uxplay
+# nuitka-project-if: {OS} == "Linux":
+#   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../uxplay/uxplay-linux*.tar.gz=uxplay/
+# nuitka-project-if: {OS} == "Windows":
+#   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../uxplay/uxplay-win64*.zip=uxplay/
+
+# Apple crap
+# nuitka-project-if: {OS} == "Windows":
+#   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../apple/*.msi=apple/
 
 import os
 import platform
@@ -35,6 +55,7 @@ from typing import Type
 from loguru import logger
 
 from app.controllers.app_controller import AppController
+from app.utils import install_thirdparty
 from app.utils.app_info import AppInfo
 from app.views.dialogue_box import show_fatal_error
 
@@ -103,11 +124,6 @@ def main_thread() -> None:
         show_fatal_error(details=stacktrace)
     finally:
         logger.info("Exiting application")
-
-
-def unpack_scrcpy() -> None:
-    if SYSTEM == "Linux":
-        pass
 
 
 if __name__ == "__main__":
@@ -186,13 +202,31 @@ if __name__ == "__main__":
     logger.info(f"Initialising EchoView application: {AppInfo().app_version}")
 
     # Unpack scrcpy
+    if not install_thirdparty.unpack_scrcpy():
+        logger.error("Failed to unpack scrcpy")
+        sys.exit(1)
+
+    if not install_thirdparty.unpack_goios():
+        logger.error("Failed to unpack go-ios")
+        sys.exit(1)
+
+    if not install_thirdparty.unpack_uxplay():
+        logger.error("Failed to unpack uxplay")
+        sys.exit(1)
+
+    if SYSTEM == "Windows" and not install_thirdparty.unpack_wintun():
+        logger.error("Failed to unpack wintun")
+        sys.exit(1)
+
+    if SYSTEM == "Windows" and not install_thirdparty.install_bonjour():
+        logger.error("Failed to install Bonjour")
+        sys.exit(1)
+
+    if (
+        SYSTEM == "Windows"
+        and not install_thirdparty.install_AppleMobileDeviceSupport()
+    ):
+        logger.error("Failed to install Apple Mobile Device Support")
+        sys.exit(1)
 
     main_thread()
-
-    # app = QtWidgets.QApplication([])
-
-    # widget = MyWidget()
-    # widget.resize(800, 600)
-    # widget.show()
-
-    # sys.exit(app.exec())

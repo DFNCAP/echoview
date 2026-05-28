@@ -17,8 +17,9 @@ from app.views.devices_view import DevicesView
 
 class OperationType(Enum):
     DEVICE_SCAN = "device_scan"
-    SCREENSHOT = "screenshot"
     BACKUP = "backup"
+    SCREEN_RECORDING = "screen recording"
+    SCREENSHOT = "screenshot"
 
 
 class DeviceOperationRunner(QObject):
@@ -72,6 +73,9 @@ class DevicesController(QObject):
         self._cancelled = threading.Event()
 
         self._view.backup_requested.connect(self._on_backup_requested)
+        self._view.screen_recording_requested.connect(
+            self._on_screen_recording_requested
+        )
         self._view.screenshot_requested.connect(self._on_screenshot_requested)
         self._view.cancel_requested.connect(self._on_cancel_requested)
 
@@ -122,7 +126,6 @@ class DevicesController(QObject):
     ) -> None:
         logger.info(f"Finished operation {operation_type} for device {device_id}")
         # Clear the event flag signal and remove it from the dict
-
         self._view.set_device_busy(device_id, False)
 
         # Special handling for device scan - update model with device list
@@ -184,6 +187,24 @@ class DevicesController(QObject):
             self._view.set_device_busy(device.identifier, False)
 
     @Slot(Device)
+    def _on_screen_recording_requested(self, device: Device) -> None:
+        output_file = (
+            self._model.output_directory
+            / (self._model.job_number or device.identifier)
+            / "screen recordings"
+            / f"recording_{get_timestamp()}.mp4"
+        )
+
+        def screen_recording_operation() -> None:
+            return device.start_screen_recording(output_file.resolve())
+
+        self._runner.submit(
+            device.identifier,
+            OperationType.SCREEN_RECORDING,
+            screen_recording_operation,
+        )
+
+    @Slot(Device)
     def _on_screenshot_requested(self, device: Device) -> None:
         """Take a screenshot of the specified device."""
 
@@ -206,6 +227,10 @@ class DevicesController(QObject):
         # Signal specific event to cancel
         if device.identifier in self._cancel_events:
             self._cancel_events[device.identifier].set()
+
+        if device.recording_process:
+            device.stop_screen_recording()
+            self._view.set_device_busy(device.identifier, False)
 
     def shutdown(self) -> None:
         # Kill all pending tasks before shutting down

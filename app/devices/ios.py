@@ -11,11 +11,9 @@ from app.devices.devices import Device, StatusReporter
 class iOSDevice(Device):
     """iOS device implementation."""
 
-    def screenshot(self, output_directory: Path) -> Path:
-        """Take iOS screenshot."""
-        raise NotImplementedError(
-            "Screenshot functionality is not available for iOS devices"
-        )  # return ios.screenshot(self.serial, output_directory)
+    def get_info(self) -> str:
+        """Get iOS device info."""
+        return f"{self.os} - {self.device_name} ({self.serial})"
 
     def backup(
         self,
@@ -27,9 +25,18 @@ class iOSDevice(Device):
             "Backup functionality is not available for iOS devices"
         )
 
-    def get_info(self) -> str:
-        """Get iOS device info."""
-        return f"{self.os} - {self.device_name} ({self.serial})"
+    def screenshot(self, output_directory: Path) -> Path:
+        raise NotImplementedError(
+            "Screenshot functionality is not available for iOS devices"
+        )
+
+    def start_screen_recording(self, output_file: Path) -> None:
+        raise NotImplementedError(
+            "Screen recording functionality is not available for iOS devices"
+        )
+
+    def stop_screen_recording(self) -> None:
+        pass
 
 
 def get_connected_devices() -> list[iOSDevice]:
@@ -48,8 +55,3 @@ def get_connected_devices() -> list[iOSDevice]:
         connection_allowed=True,
     )
     return [device]
-
-
-def screenshot(udid: str, file_name: Path) -> Path:
-    logger.info(f"Taking iOS screenshot of device {udid} to {file_name}")
-    return file_name

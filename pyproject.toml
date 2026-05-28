@@ -12,7 +12,6 @@ dependencies = [
     "pyside6>=6.11.1",
 ]
 
-
 [dependency-groups]
 dev = [
     "lxml-stubs>=0.5.1",

@@ -1,6 +1,3 @@
 [submodule "uxplay/UxPlay"]
 	path = submodules/UxPlay
 	url = https://github.com/antimof/UxPlay.git
-[submodule "submodules/go-ios"]
-	path = submodules/go-ios
-	url = https://github.com/danielpaulus/go-ios.git

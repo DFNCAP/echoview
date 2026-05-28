@@ -27,21 +27,25 @@ class DeviceWidget(QWidget):
     def __init__(self, device: Device) -> None:
         super().__init__()
         self._device = device
-        self._device_id = device.identifier
         self._status = "Idle"
 
         layout = QVBoxLayout()
-        layout.addWidget(self._make_heading(device.device_name or device.identifier))
+        self._heading_label = self._make_heading(
+            device.device_name or device.identifier
+        )
+        layout.addWidget(self._heading_label)
 
         self._status_label = QLabel(self._generate_status_label())
         layout.addWidget(self._status_label)
 
-        if not self._device.connection_allowed:
-            warning_label = QLabel(
-                "Warning: Connection unauthorised. Please unlock phone and allow USB debugging to continue."
-            )
-            warning_label.setStyleSheet("color: red; font-weight: bold;")
-            layout.addWidget(warning_label)
+        self._warning_label = QLabel(
+            "Warning: Connection unauthorised. Please unlock phone and allow USB debugging to continue."
+        )
+        self._warning_label.setStyleSheet("color: red; font-weight: bold;")
+        layout.addWidget(self._warning_label)
+
+        if self._device.connection_allowed:
+            self._warning_label.hide()
 
         self._action_rows: list[tuple[QPushButton, QProgressBar]] = []
 
@@ -93,7 +97,7 @@ class DeviceWidget(QWidget):
         self.setLayout(layout)
 
     # ------------------------------------------------------------------ #
-    # Widget setup
+    # Setup
     # ------------------------------------------------------------------ #
     def _make_heading(self, text: str) -> QLabel:
         label = QLabel(text)
@@ -121,21 +125,8 @@ class DeviceWidget(QWidget):
         return btn, bar
 
     # ------------------------------------------------------------------ #
-    # Callbacks
+    # Public
     # ------------------------------------------------------------------ #
-    def _on_action_clicked(
-        self, status: str, signal: SignalInstance, btn: QPushButton, bar: QProgressBar
-    ) -> None:
-        logger.info(
-            f"{status} requested for {self._device.os} device: {self._device.identifier}"
-        )
-        self._status = status
-        self._status_label.setText(self._generate_status_label())
-        btn.hide()
-        bar.show()
-        self._cancel_btn.show()
-        signal.emit(self._device)
-
     def set_busy(self, busy: bool) -> None:
         self._cancel_btn.setHidden(not busy)
         for btn, bar in self._action_rows:
@@ -147,6 +138,7 @@ class DeviceWidget(QWidget):
         if not busy:
             self._status = "Idle"
             self._status_label.setText(self._generate_status_label())
+            self.set_progress(0, 0)
 
     @Slot(str)
     def set_status(self, status: str) -> None:
@@ -162,6 +154,19 @@ class DeviceWidget(QWidget):
                 bar.setRange(0, total)
                 bar.setValue(current)
 
+    def update_widget(self, device: Device) -> None:
+        self._device = device
+        logger.info(f"Name: {device.device_name}, ID: {device.identifier}")
+        self._heading_label.setText(self._device.device_name or self._device.identifier)
+        if self._device.connection_allowed:
+            self._warning_label.hide()
+            for btn, _ in self._action_rows:
+                btn.setEnabled(True)
+        else:
+            self._warning_label.show()
+            for btn, _ in self._action_rows:
+                btn.setDisabled(True)
+
     # ------------------------------------------------------------------ #
     # Helpers
     # ------------------------------------------------------------------ #
@@ -173,3 +178,16 @@ class DeviceWidget(QWidget):
             parts.append(f"Device Type: {d.device_type}")
         parts.append(f"Status: {self._status}")
         return " | ".join(parts)
+
+    def _on_action_clicked(
+        self, status: str, signal: SignalInstance, btn: QPushButton, bar: QProgressBar
+    ) -> None:
+        logger.info(
+            f"{status} requested for {self._device.os} device: {self._device.identifier}"
+        )
+        self._status = status
+        self._status_label.setText(self._generate_status_label())
+        btn.hide()
+        bar.show()
+        self._cancel_btn.show()
+        signal.emit(self._device)

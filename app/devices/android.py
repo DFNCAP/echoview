@@ -6,16 +6,25 @@ from pathlib import Path
 from loguru import logger
 
 from app.devices.devices import Device, StatusReporter
+from app.utils.app_info import AppInfo
+
+
+def _adb() -> str:
+    """Get the path to the ADB executable."""
+    return str(AppInfo().adb_path)
+
+
+def _scrcpy() -> str:
+    return str(AppInfo().scrcpy_path)
 
 
 @dataclass
 class AndroidDevice(Device):
     """Android device implementation."""
 
-    def screenshot(self, output_file: Path) -> Path:
-        """Take Android screenshot."""
-
-        return screenshot(self.identifier, output_file)
+    def get_info(self) -> str:
+        """Get Android device info."""
+        return f"{self.os} - {self.device_name} ({self.serial})"
 
     def backup(
         self,
@@ -25,37 +34,54 @@ class AndroidDevice(Device):
     ) -> Path:
 
         installed_packages = list_installed_packages(self.identifier)
-        for i, package in enumerate(installed_packages, 1):
-            if cancelled and cancelled.is_set():
-                return Path()
-
-            if reporter:
-                reporter.status_changed.emit(f"Dumping {package}")
-                reporter.progress_changed.emit(i, len(installed_packages))
-            dump_apk(self.identifier, package, output_directory / "installed_packages")
-
         system_packages = list_system_packages(self.identifier)
-        for i, package in enumerate(system_packages, 1):
+        dirs_to_dump = ls(self.identifier, "/sdcard")
+
+        items_to_dump = installed_packages + system_packages + dirs_to_dump
+        for i, item in enumerate(items_to_dump, 1):
             if cancelled and cancelled.is_set():
                 return Path()
             if reporter:
-                reporter.status_changed.emit(f"Dumping {package}")
-                reporter.progress_changed.emit(i, len(system_packages))
-            dump_apk(self.identifier, package, output_directory / "system_packages")
+                reporter.progress_changed.emit(i, len(items_to_dump))
+                reporter.status_changed.emit(f"Dumping {item}")
 
-        dump_partition(
-            self.identifier, output_directory, "/sdcard", reporter, cancelled
-        )
+            if item in installed_packages:
+                dump_apk(self.identifier, item, output_directory / "installed_packages")
+            elif item in system_packages:
+                dump_apk(self.identifier, item, output_directory / "system_packages")
+            elif item in dirs_to_dump:
+                dump(self.identifier, item, output_directory / "sdcard")
 
         return output_directory
 
-    def get_info(self) -> str:
-        """Get Android device info."""
-        return f"{self.os} - {self.device_name} ({self.serial})"
+    def start_screen_recording(self, output_file: Path) -> None:
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        self.recording_process = subprocess.Popen(
+            [
+                _scrcpy(),
+                "-s",
+                self.identifier,
+                "--window-title",
+                self.identifier,
+                "--record",
+                str(output_file),
+            ]
+        )
+        self.recording_process.wait()
+        self.recording_process = None
+
+    def stop_screen_recording(self) -> None:
+        if self.recording_process:
+            self.recording_process.terminate()
+
+    def screenshot(self, output_file: Path) -> Path:
+        """Take Android screenshot."""
+
+        return screenshot(self.identifier, output_file)
 
 
 def get_connected_devices() -> list[AndroidDevice]:
-    proc = subprocess.run(["adb", "devices"], capture_output=True, text=True)
+    proc = subprocess.run([_adb(), "devices"], capture_output=True, text=True)
     logger.info(proc.stdout)
 
     connected_devices: list[AndroidDevice] = []
@@ -77,7 +103,7 @@ def get_connected_devices() -> list[AndroidDevice]:
 def screenshot(serial: str, output_file: Path) -> Path:
     logger.info(f"Taking Android screenshot of device {serial} to {output_file}")
     proc = subprocess.run(
-        ["adb", "-s", serial, "exec-out", "screencap", "-p"],
+        [_adb(), "-s", serial, "exec-out", "screencap", "-p"],
         capture_output=True,
     )
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -93,7 +119,7 @@ def backup(
 
     proc = subprocess.run(
         [
-            "adb",
+            _adb(),
             "-s",
             serial,
             "backup",
@@ -114,43 +140,35 @@ def backup(
     return output_file
 
 
-def dump_partition(
+def dump(
     serial: str,
+    directory: str,
     output_directory: Path,
-    partition: str,
-    reporter: StatusReporter | None = None,
-    cancelled: threading.Event | None = None,
 ) -> None:
+    logger.info(f"Dumping {directory} to {output_directory}")
     output_directory.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [_adb(), "-s", serial, "pull", directory, str(output_directory)],
+        capture_output=True,
+    )
 
+
+def ls(serial: str, directory: str) -> list[str]:
     proc = subprocess.run(
-        ["adb", "-s", serial, "shell", "ls", "-1", partition],
+        [_adb(), "-s", serial, "shell", "ls", "-1", directory],
         capture_output=True,
         text=True,
     )
-
-    entries = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
-    total = len(entries)
-
-    for i, entry in enumerate(entries, 0):
-        if cancelled and cancelled.is_set():
-            return
-        remote_path = f"{partition}/{entry}"
-        local_path = output_directory / entry
-
-        if reporter:
-            reporter.status_changed.emit(f"Pulling {entry}")
-            reporter.progress_changed.emit(i, total)
-
-        subprocess.run(
-            ["adb", "-s", serial, "pull", remote_path, str(local_path)],
-            capture_output=True,
-        )
+    return [
+        f"{directory}/{line}".strip()
+        for line in proc.stdout.splitlines()
+        if line.strip()
+    ]
 
 
 def list_all_packages(serial: str, flag: str = "") -> list[str]:
     all_packages = subprocess.run(
-        ["adb", "-s", serial, "shell", "pm", "list", "packages", flag],
+        [_adb(), "-s", serial, "shell", "pm", "list", "packages", flag],
         capture_output=True,
         text=True,
     ).stdout
@@ -166,7 +184,7 @@ def list_all_packages(serial: str, flag: str = "") -> list[str]:
 
 def list_system_packages(serial: str) -> list[str]:
     output = subprocess.run(
-        ["adb", "-s", serial, "shell", "pm", "list", "packages", "-s"],
+        [_adb(), "-s", serial, "shell", "pm", "list", "packages", "-s"],
         capture_output=True,
         text=True,
     ).stdout
@@ -182,7 +200,7 @@ def list_system_packages(serial: str) -> list[str]:
 
 def list_installed_packages(serial: str) -> list[str]:
     output = subprocess.run(
-        ["adb", "-s", serial, "shell", "pm", "list", "packages", "-3"],
+        [_adb(), "-s", serial, "shell", "pm", "list", "packages", "-3"],
         capture_output=True,
         text=True,
     ).stdout
@@ -198,7 +216,7 @@ def list_installed_packages(serial: str) -> list[str]:
 
 def dump_apk(serial: str, package: str, output_directory: Path) -> None:
     package_paths = subprocess.run(
-        ["adb", "-s", serial, "shell", "pm", "path", package],
+        [_adb(), "-s", serial, "shell", "pm", "path", package],
         capture_output=True,
         text=True,
     ).stdout
@@ -214,7 +232,7 @@ def dump_apk(serial: str, package: str, output_directory: Path) -> None:
     for path in package_paths.splitlines():
         subprocess.run(
             [
-                "adb",
+                _adb(),
                 "-s",
                 serial,
                 "pull",
@@ -228,7 +246,7 @@ def dump_apk(serial: str, package: str, output_directory: Path) -> None:
 
 def get_setting(serial: str, namespace: str, setting_name: str) -> str:
     proc = subprocess.run(
-        ["adb", "-s", serial, "shell", "settings", "get", namespace, setting_name],
+        [_adb(), "-s", serial, "shell", "settings", "get", namespace, setting_name],
         capture_output=True,
         text=True,
     )
@@ -238,7 +256,7 @@ def get_setting(serial: str, namespace: str, setting_name: str) -> str:
 
 def get_property(serial: str, prop: str) -> str:
     proc = subprocess.run(
-        ["adb", "-s", serial, "shell", "getprop", prop],
+        [_adb(), "-s", serial, "shell", "getprop", prop],
         capture_output=True,
         text=True,
     )
@@ -247,6 +265,6 @@ def get_property(serial: str, prop: str) -> str:
 
 
 def kill_server() -> None:
-    proc = subprocess.run(
-        ["adb", "kill-server"],
+    subprocess.run(
+        [_adb(), "kill-server"],
     )

@@ -1,7 +1,9 @@
+import subprocess
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import QObject, Signal
 
@@ -24,10 +26,7 @@ class Device(ABC):
     height: int = 0
     connection_allowed: bool = False
 
-    @abstractmethod
-    def screenshot(self, output_file: Path) -> Path:
-        """Take a screenshot and return the output path."""
-        pass
+    recording_process: subprocess.Popen[Any] | None = None
 
     @abstractmethod
     def backup(
@@ -37,6 +36,19 @@ class Device(ABC):
         cancelled: threading.Event | None = None,
     ) -> Path:
         """Take a backup and return the output path."""
+        pass
+
+    @abstractmethod
+    def start_screen_recording(self, output_file: Path) -> None:
+        pass
+
+    @abstractmethod
+    def stop_screen_recording(self) -> None:
+        pass
+
+    @abstractmethod
+    def screenshot(self, output_file: Path) -> Path:
+        """Take a screenshot and return the output path."""
         pass
 
     @abstractmethod

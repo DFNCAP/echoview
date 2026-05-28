@@ -28,9 +28,9 @@ class DevicesView(QWidget):
     def __init__(self) -> None:
         super().__init__()
         logger.debug("Initializing DevicesView")
+        self._device_widget_map: dict[str, DeviceWidget] = {}
 
         self._layout = QVBoxLayout()
-        self._device_widgets: list[DeviceWidget] = []
 
         # Title
         title = QLabel("Connected Devices")
@@ -45,26 +45,38 @@ class DevicesView(QWidget):
 
         self._layout.addStretch()
         self.setLayout(self._layout)
-        self._device_widget_map: dict[str, DeviceWidget] = {}
 
     @Slot(object)
     def update_devices(self, devices: list[Device]) -> None:
-        """Update the device list display."""
-        # Clear existing widgets
-        for widget in self._device_widgets:
-            widget.deleteLater()
-        self._device_widgets.clear()
-        self._device_widget_map.clear()
+        """Update the device list display, preserving existing widgets."""
+        # Get current device IDs
+        current_ids = {d.identifier for d in devices}
+        existing_ids = set(self._device_widget_map.keys())
 
-        # Add new device widgets
+        # Remove devices that are no longer connected
+        for device_id in existing_ids - current_ids:
+            widget = self._device_widget_map[device_id]
+            widget.deleteLater()
+            del self._device_widget_map[device_id]
+
+        # Add or update devices
         for device in devices:
-            device_widget = DeviceWidget(device)
-            device_widget.backup_requested.connect(self.backup_requested.emit)
-            device_widget.screenshot_requested.connect(self.screenshot_requested.emit)
-            device_widget.cancel_requested.connect(self.cancel_requested)
-            self._devices_layout.addWidget(device_widget)
-            self._device_widgets.append(device_widget)
-            self._device_widget_map[device.identifier] = device_widget
+            if device.identifier not in self._device_widget_map:
+                # New device - create widget
+                device_widget = DeviceWidget(device)
+                device_widget.backup_requested.connect(self.backup_requested.emit)
+                device_widget.screen_recording_requested.connect(
+                    self.screen_recording_requested.emit
+                )
+                device_widget.screenshot_requested.connect(
+                    self.screenshot_requested.emit
+                )
+                device_widget.cancel_requested.connect(self.cancel_requested)
+                self._devices_layout.addWidget(device_widget)
+                self._device_widget_map[device.identifier] = device_widget
+            else:
+                # Existing device - update the device reference
+                self._device_widget_map[device.identifier].update_widget(device)
 
         logger.debug(f"Updated DevicesView with {len(devices)} devices")
 
