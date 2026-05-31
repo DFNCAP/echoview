@@ -117,6 +117,15 @@ class AppInfo:
             return self._application_folder / "go-ios" / "ios-amd64"
 
     @property
+    def uxplay_path(self) -> Path:
+        """Get the path to the scrcpy executable."""
+        system = platform.system()
+        if system == "Windows":
+            return self._application_folder / "uxplay" / "bin" / "uxplay.exe"
+        else:
+            return self._application_folder / "uxplay" / "bin" / "uxplay"
+
+    @property
     def app_name(self) -> str:
         """
         Get the name of the application.

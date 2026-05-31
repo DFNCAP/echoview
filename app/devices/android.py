@@ -1,5 +1,6 @@
 import subprocess
 import threading
+import platform
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -72,7 +73,13 @@ class AndroidDevice(Device):
 
     def stop_screen_recording(self) -> None:
         if self.recording_process:
-            self.recording_process.terminate()
+            if platform.system() == "Windows":
+                subprocess.run(
+                    ["taskkill", "/pid", str(self.recording_process.pid)],
+                    capture_output=True,
+                )
+            else:
+                self.recording_process.terminate()
 
     def screenshot(self, output_file: Path) -> Path:
         """Take Android screenshot."""

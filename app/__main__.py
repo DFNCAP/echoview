@@ -22,16 +22,19 @@
 #   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../scrcpy/scrcpy-linux*.tar.gz=scrcpy/
 # nuitka-project-if: {OS} == "Windows":
 #   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../scrcpy/scrcpy-win64*.zip=scrcpy/
+# nuitka-project: --include-data-files={MAIN_DIRECTORY}/../scrcpy/LICENSE=scrcpy/
 
 # go-ios
 # nuitka-project-if: {OS} == "Linux":
 #   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../go-ios/go-ios-linux*.zip=go-ios/
 # nuitka-project-if: {OS} == "Windows":
 #   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../go-ios/go-ios-win*.zip=go-ios/
+# nuitka-project: --include-data-files={MAIN_DIRECTORY}/../go-ios/LICENSE=go-ios/
 
 # wintun
 # nuitka-project-if: {OS} == "Windows":
 #   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../wintun/wintun*.zip=wintun/
+# nuitka-project: --include-data-files={MAIN_DIRECTORY}/../wintun/LICENSE.txt=wintun/
 
 # uxplay
 # nuitka-project-if: {OS} == "Linux":

@@ -1,3 +1,5 @@
+This project bundles go-ios (MIT) and scrcpy (Apache 2.0).
+
 `uv run -m app`
 
 `uv run -m nuitka app`
