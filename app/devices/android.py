@@ -1,12 +1,12 @@
+import platform
 import subprocess
 import threading
-import platform
 from dataclasses import dataclass
 from pathlib import Path
 
 from loguru import logger
 
-from app.devices.devices import Device, StatusReporter
+from app.devices.devices import ConnectionType, Device, StatusReporter
 from app.utils.app_info import AppInfo
 
 
@@ -55,7 +55,161 @@ class AndroidDevice(Device):
 
         return output_directory
 
-    def start_screen_recording(self, output_file: Path) -> None:
+    def extract_contacts(self, output_file: Path) -> Path:
+        proc = subprocess.run(
+            [
+                _adb(),
+                "-s",
+                self.identifier,
+                "shell",
+                "content",
+                "query",
+                "--uri",
+                "content://contacts/phones",
+                "--projection",
+                "name:number",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        if proc.stdout:
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            with output_file.open(mode="w", encoding="utf-8") as file:
+                for line in proc.stdout.splitlines():
+                    cleaned = line.strip().split(": ", 1)[-1].split(" ", 1)[-1]
+                    file.write(f"{cleaned}\n")
+        return output_file
+
+    def extract_device_info(self, output_directory: Path) -> None:
+        getprop_proc = subprocess.run(
+            [_adb(), "-s", self.identifier, "shell", "getprop"], capture_output=True
+        )
+        if getprop_proc.stdout:
+            output_directory.mkdir(parents=True, exist_ok=True)
+            output_file = output_directory / "getprop_raw.txt"
+            output_file.write_bytes(getprop_proc.stdout)
+
+        system_settings_proc = subprocess.run(
+            [_adb(), "-s", self.identifier, "shell", "settings", "list", "system"],
+            capture_output=True,
+        )
+        if system_settings_proc.stdout:
+            output_directory.mkdir(parents=True, exist_ok=True)
+            output_file = output_directory / "system_settings_raw.txt"
+            output_file.write_bytes(system_settings_proc.stdout)
+
+        secure_settings_proc = subprocess.run(
+            [_adb(), "-s", self.identifier, "shell", "settings", "list", "secure"],
+            capture_output=True,
+        )
+        if secure_settings_proc.stdout:
+            output_directory.mkdir(parents=True, exist_ok=True)
+            output_file = output_directory / "secure_settings_raw.txt"
+            output_file.write_bytes(secure_settings_proc.stdout)
+
+        global_settings_proc = subprocess.run(
+            [_adb(), "-s", self.identifier, "shell", "settings", "list", "global"],
+            capture_output=True,
+        )
+        if global_settings_proc.stdout:
+            output_directory.mkdir(parents=True, exist_ok=True)
+            output_file = output_directory / "global_settings_raw.txt"
+            output_file.write_bytes(global_settings_proc.stdout)
+
+        apps_list_proc = subprocess.run(
+            [
+                _adb(),
+                "-s",
+                self.identifier,
+                "shell",
+                "pm",
+                "list",
+                "packages",
+                "-f",
+                "-u",
+            ],
+            capture_output=True,
+        )
+        if apps_list_proc.stdout:
+            output_directory.mkdir(parents=True, exist_ok=True)
+            output_file = output_directory / "apps.txt"
+            output_file.write_bytes(apps_list_proc.stdout)
+
+    def extract_device_logs(
+        self, output_directory: Path, reporter: StatusReporter | None = None
+    ) -> None:
+
+        if reporter:
+            reporter.progress_changed.emit(0, 4)
+            reporter.status_changed.emit("Dumping system log")
+
+        dumpsys_proc = subprocess.run(
+            [
+                _adb(),
+                "-s",
+                self.identifier,
+                "shell",
+                "dumpsys",
+            ],
+            capture_output=True,
+        )
+        if dumpsys_proc.stdout:
+            output_directory.mkdir(parents=True, exist_ok=True)
+            output_file = output_directory / "dumpsys.log"
+            output_file.write_bytes(dumpsys_proc.stdout)
+
+        if reporter:
+            reporter.progress_changed.emit(1, 4)
+            reporter.status_changed.emit("Generating bug report archive")
+        output_directory.mkdir(parents=True, exist_ok=True)
+        output_file = output_directory / "bugreport-archive.zip"
+        bugreport_proc = subprocess.run(
+            [
+                _adb(),
+                "-s",
+                self.identifier,
+                "bugreport",
+                output_file,
+            ],
+            capture_output=True,
+        )
+
+        if reporter:
+            reporter.progress_changed.emit(2, 4)
+            reporter.status_changed.emit("Dumping logcat stats")
+
+        logcat_stats_proc = subprocess.run(
+            [_adb(), "-s", self.identifier, "shell", "logcat", "-S", "-b", "all"],
+            capture_output=True,
+        )
+        if logcat_stats_proc.stdout:
+            output_directory.mkdir(parents=True, exist_ok=True)
+            output_file = output_directory / "logcat_stats.log"
+            output_file.write_bytes(logcat_stats_proc.stdout)
+
+        if reporter:
+            reporter.progress_changed.emit(3, 4)
+            reporter.status_changed.emit("Dumping logcat logs")
+
+        logcat_logs_proc = subprocess.run(
+            [_adb(), "-s", self.identifier, "shell", "logcat", "-d", "-b", "all"],
+            capture_output=True,
+        )
+        if logcat_logs_proc.stdout:
+            output_directory.mkdir(parents=True, exist_ok=True)
+            output_file = output_directory / "logcat_log.log"
+            output_file.write_bytes(logcat_logs_proc.stdout)
+
+        if reporter:
+            reporter.progress_changed.emit(4, 4)
+            reporter.status_changed.emit("Finalising")
+
+    def start_screen_recording(
+        self,
+        output_file: Path,
+        reporter: StatusReporter | None = None,
+    ) -> None:
         output_file.parent.mkdir(parents=True, exist_ok=True)
         self.recording_process = subprocess.Popen(
             [
@@ -71,7 +225,10 @@ class AndroidDevice(Device):
         self.recording_process.wait()
         self.recording_process = None
 
-    def stop_screen_recording(self) -> None:
+    def stop_screen_recording(
+        self,
+        reporter: StatusReporter | None = None,
+    ) -> None:
         if self.recording_process:
             if platform.system() == "Windows":
                 subprocess.run(
@@ -89,7 +246,6 @@ class AndroidDevice(Device):
 
 def get_connected_devices() -> list[AndroidDevice]:
     proc = subprocess.run([_adb(), "devices"], capture_output=True, text=True)
-    logger.info(proc.stdout)
 
     connected_devices: list[AndroidDevice] = []
     for line in proc.stdout.splitlines()[1:]:
@@ -100,7 +256,7 @@ def get_connected_devices() -> list[AndroidDevice]:
                 device.device_name = get_setting(parts[0], "global", "device_name")
                 device.os_version = get_property(parts[0], "ro.build.version.release")
                 device.device_type = get_property(parts[0], "ro.product.model")
-                device.connection_allowed = True
+                device.connection_type = ConnectionType.FULL
 
             connected_devices.append(device)
 

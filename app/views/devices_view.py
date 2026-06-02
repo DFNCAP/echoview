@@ -65,6 +65,15 @@ class DevicesView(QWidget):
                 # New device - create widget
                 device_widget = DeviceWidget(device)
                 device_widget.backup_requested.connect(self.backup_requested.emit)
+                device_widget.extract_contacts_requested.connect(
+                    self.extract_contacts_requested.emit
+                )
+                device_widget.extract_device_info_requested.connect(
+                    self.extract_device_info_requested.emit
+                )
+                device_widget.extract_device_logs_requested.connect(
+                    self.extract_device_logs_requested.emit
+                )
                 device_widget.screen_recording_requested.connect(
                     self.screen_recording_requested.emit
                 )

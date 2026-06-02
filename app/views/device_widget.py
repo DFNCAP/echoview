@@ -10,7 +10,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.devices.devices import Device
+from app.devices.devices import ConnectionType, Device
+from app.views.dialogue_box import show_warning
 
 
 class DeviceWidget(QWidget):
@@ -38,13 +39,11 @@ class DeviceWidget(QWidget):
         self._status_label = QLabel(self._generate_status_label())
         layout.addWidget(self._status_label)
 
-        self._warning_label = QLabel(
-            "Warning: Connection unauthorised. Please unlock phone and allow USB debugging to continue."
-        )
+        self._warning_label = QLabel(self._get_warning_text())
         self._warning_label.setStyleSheet("color: red; font-weight: bold;")
         layout.addWidget(self._warning_label)
 
-        if self._device.connection_allowed:
+        if self._device.connection_type == ConnectionType.FULL:
             self._warning_label.hide()
 
         self._action_rows: list[tuple[QPushButton, QProgressBar]] = []
@@ -76,9 +75,12 @@ class DeviceWidget(QWidget):
             self._add_action_row(layout, "Screenshot", self.screenshot_requested)
         )
 
-        if not self._device.connection_allowed:
-            for btn, _ in self._action_rows:
-                btn.setDisabled(True)
+        for btn, _ in self._action_rows:
+            full_connection = self._device.connection_type == ConnectionType.FULL
+            partial_connection = self._device.connection_type == ConnectionType.PARTIAL
+            btn.setEnabled(
+                full_connection or (partial_connection and btn.text() != "Screenshot")
+            )
 
         self._cancel_btn = QPushButton("Cancel")
         self._cancel_btn.hide()
@@ -130,7 +132,16 @@ class DeviceWidget(QWidget):
     def set_busy(self, busy: bool) -> None:
         self._cancel_btn.setHidden(not busy)
         for btn, bar in self._action_rows:
-            btn.setEnabled(not busy)
+            full_connection = self._device.connection_type == ConnectionType.FULL
+            partial_connection = self._device.connection_type == ConnectionType.PARTIAL
+            btn.setEnabled(
+                not busy
+                and (
+                    full_connection
+                    or (partial_connection and btn.text() != "Screenshot")
+                )
+            )
+            # btn.setEnabled(not busy)
             if not busy:
                 btn.show()
                 bar.hide()
@@ -142,6 +153,9 @@ class DeviceWidget(QWidget):
 
     @Slot(str)
     def set_status(self, status: str) -> None:
+        if status == "UXPLAY_ENTER_PIN":
+            show_warning("Enter Pin", "Enter pin '1234' on the device to continue")
+            return
         self._status = status
         self._status_label.setText(self._generate_status_label())
 
@@ -158,22 +172,36 @@ class DeviceWidget(QWidget):
         self._device = device
         logger.info(f"Name: {device.device_name}, ID: {device.identifier}")
         self._heading_label.setText(self._device.device_name or self._device.identifier)
-        if self._device.connection_allowed:
+        self._status_label.setText(self._generate_status_label())
+
+        full_connection = self._device.connection_type == ConnectionType.FULL
+        partial_connection = self._device.connection_type == ConnectionType.PARTIAL
+
+        if full_connection:
             self._warning_label.hide()
-            for btn, _ in self._action_rows:
-                btn.setEnabled(True)
         else:
+            self._warning_label.setText(self._get_warning_text())
             self._warning_label.show()
-            for btn, _ in self._action_rows:
-                btn.setDisabled(True)
+
+        for btn, _ in self._action_rows:
+            btn.setEnabled(
+                full_connection or (partial_connection and btn.text() != "Screenshot")
+            )
 
     # ------------------------------------------------------------------ #
     # Helpers
     # ------------------------------------------------------------------ #
     def _generate_status_label(self) -> str:
         d = self._device
-        os_str = f"{d.os} ({d.os_version})" if d.os_version else d.os
-        parts = [f"Serial: {d.serial}", f"OS: {os_str}"]
+        parts = []
+        if d.serial:
+            parts.append(f"Serial: {d.serial}")
+
+        if d.os == "iOS":
+            parts.append(f"UDID: {d.identifier}")
+
+        parts.append(f"OS: {d.os} ({d.os_version})" if d.os_version else f"OS: {d.os}")
+
         if d.device_type:
             parts.append(f"Device Type: {d.device_type}")
         parts.append(f"Status: {self._status}")
@@ -189,5 +217,21 @@ class DeviceWidget(QWidget):
         self._status_label.setText(self._generate_status_label())
         btn.hide()
         bar.show()
+        self._cancel_btn.setText(
+            "Stop Recording"
+        ) if self._status == "Screen Recording" else self._cancel_btn.setText("Cancel")
         self._cancel_btn.show()
+
         signal.emit(self._device)
+
+    def _get_warning_text(self) -> str:
+        if self._device.os == "Android":
+            if self._device.connection_type == ConnectionType.NONE:
+                return "Warning: Connection unauthorised. Please unlock phone and enable/allow USB debugging to continue."
+        elif self._device.os == "iOS":
+            if self._device.connection_type == ConnectionType.NONE:
+                return "Warning: Cannot establish connection. An MDM may be active on the device."
+            elif self._device.connection_type == ConnectionType.PARTIAL:
+                return "Warning: Device not in developer mode. Screenshot functionality is unavailable."
+
+        return ""

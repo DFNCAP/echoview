@@ -18,6 +18,9 @@ from app.views.devices_view import DevicesView
 class OperationType(Enum):
     DEVICE_SCAN = "device_scan"
     BACKUP = "backup"
+    EXTRACT_CONTACTS = "extract contacts"
+    EXTRACT_DEVICE_INFO = "extract device info"
+    EXTRACT_DEVICE_LOGS = "extract device logs"
     SCREEN_RECORDING = "screen recording"
     SCREENSHOT = "screenshot"
 
@@ -73,6 +76,15 @@ class DevicesController(QObject):
         self._cancelled = threading.Event()
 
         self._view.backup_requested.connect(self._on_backup_requested)
+        self._view.extract_contacts_requested.connect(
+            self._on_contacts_extraction_requested
+        )
+        self._view.extract_device_info_requested.connect(
+            self._on_device_info_extraction_requested
+        )
+        self._view.extract_device_logs_requested.connect(
+            self._on_device_logs_extraction_requested
+        )
         self._view.screen_recording_requested.connect(
             self._on_screen_recording_requested
         )
@@ -187,16 +199,79 @@ class DevicesController(QObject):
             self._view.set_device_busy(device.identifier, False)
 
     @Slot(Device)
+    def _on_contacts_extraction_requested(self, device: Device) -> None:
+        output_file = (
+            self._model.output_directory
+            / (self._model.job_number or device.identifier)
+            / f"contacts_{get_timestamp()}.txt"
+        )
+
+        def extract_contacts_operation() -> Path:
+            return device.extract_contacts(output_file.resolve())
+
+        self._runner.submit(
+            device.identifier,
+            OperationType.EXTRACT_CONTACTS,
+            extract_contacts_operation,
+        )
+
+    @Slot(Device)
+    def _on_device_logs_extraction_requested(self, device: Device) -> None:
+        output_file = (
+            self._model.output_directory
+            / (self._model.job_number or device.identifier)
+            / f"device_logs_{get_timestamp()}.txt"
+        )
+
+        reporter = StatusReporter()
+        widget = self._view._device_widget_map.get(device.identifier)
+        if widget:
+            reporter.status_changed.connect(widget.set_status)
+            reporter.progress_changed.connect(widget.set_progress)
+
+        def extract_device_logs_operation() -> None:
+            return device.extract_device_logs(output_file.resolve(), reporter)
+
+        self._runner.submit(
+            device.identifier,
+            OperationType.EXTRACT_DEVICE_LOGS,
+            extract_device_logs_operation,
+        )
+
+    @Slot(Device)
+    def _on_device_info_extraction_requested(self, device: Device) -> None:
+        output_directory = (
+            self._model.output_directory
+            / (self._model.job_number or device.identifier)
+            / f"device_info_{get_timestamp()}.txt"
+        )
+
+        def extract_device_info_operation() -> None:
+            return device.extract_device_info(output_directory.resolve())
+
+        self._runner.submit(
+            device.identifier,
+            OperationType.EXTRACT_DEVICE_INFO,
+            extract_device_info_operation,
+        )
+
+    @Slot(Device)
     def _on_screen_recording_requested(self, device: Device) -> None:
         output_file = (
             self._model.output_directory
             / (self._model.job_number or device.identifier)
-            / "screen recordings"
+            / "recordings"
             / f"recording_{get_timestamp()}.mp4"
         )
+        reporter = None
+        if device.os == "iOS":
+            reporter = StatusReporter()
+            widget = self._view._device_widget_map.get(device.identifier)
+            if widget and reporter:
+                reporter.status_changed.connect(widget.set_status)
 
         def screen_recording_operation() -> None:
-            return device.start_screen_recording(output_file.resolve())
+            return device.start_screen_recording(output_file.resolve(), reporter)
 
         self._runner.submit(
             device.identifier,
@@ -229,6 +304,11 @@ class DevicesController(QObject):
             self._cancel_events[device.identifier].set()
 
         if device.recording_process:
+            if device.os == "iOS":
+                self._view.show_operation_waring(
+                    "Stop Recording",
+                    "Please ensure you have stopped screen mirroring on the device before proceeding to avoid video corruption",
+                )
             device.stop_screen_recording()
             self._view.set_device_busy(device.identifier, False)
 
@@ -236,4 +316,11 @@ class DevicesController(QObject):
         # Kill all pending tasks before shutting down
         for _, event in self._cancel_events.items():
             event.set()
+
+        # Forcefully terminate all recording processes
+        for device in self._model.devices:
+            if device.recording_process:
+                device.recording_process.kill()
+                device.recording_process = None
+
         self._runner.shutdown()
