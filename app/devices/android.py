@@ -4,10 +4,21 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
+from imagehash import average_hash
 from loguru import logger
+from PIL import Image
 
 from app.devices.devices import ConnectionType, Device, StatusReporter
 from app.utils.app_info import AppInfo
+from app.utils.subprocess_helpers import popen, run
+
+
+class NoContactsFoundError(Exception):
+    """Raised when no contacts are found on the device."""
+
+
+class DuplicateImageError(Exception):
+    """Raised when duplicate images are detected during autoscroll screenshot."""
 
 
 def _adb() -> str:
@@ -56,41 +67,25 @@ class AndroidDevice(Device):
         return output_directory
 
     def extract_contacts(self, output_file: Path) -> Path:
-        proc = subprocess.run(
-            [
-                _adb(),
-                "-s",
-                self.identifier,
-                "shell",
-                "content",
-                "query",
-                "--uri",
-                "content://contacts/phones",
-                "--projection",
-                "name:number",
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        if proc.stdout:
+        contacts = get_contacts(self.identifier)
+        if contacts:
             output_file.parent.mkdir(parents=True, exist_ok=True)
             with output_file.open(mode="w", encoding="utf-8") as file:
-                for line in proc.stdout.splitlines():
-                    cleaned = line.strip().split(": ", 1)[-1].split(" ", 1)[-1]
-                    file.write(f"{cleaned}\n")
+                for entry in contacts:
+                    file.write(f"{entry[0]} : {entry[1]}\n")
+
+        else:
+            raise NoContactsFoundError("No contacts found on the device")
         return output_file
 
     def extract_device_info(self, output_directory: Path) -> None:
-        getprop_proc = subprocess.run(
-            [_adb(), "-s", self.identifier, "shell", "getprop"], capture_output=True
-        )
+        getprop_proc = run([_adb(), "-s", self.identifier, "shell", "getprop"], capture_output=True)
         if getprop_proc.stdout:
             output_directory.mkdir(parents=True, exist_ok=True)
             output_file = output_directory / "getprop_raw.txt"
             output_file.write_bytes(getprop_proc.stdout)
 
-        system_settings_proc = subprocess.run(
+        system_settings_proc = run(
             [_adb(), "-s", self.identifier, "shell", "settings", "list", "system"],
             capture_output=True,
         )
@@ -99,7 +94,7 @@ class AndroidDevice(Device):
             output_file = output_directory / "system_settings_raw.txt"
             output_file.write_bytes(system_settings_proc.stdout)
 
-        secure_settings_proc = subprocess.run(
+        secure_settings_proc = run(
             [_adb(), "-s", self.identifier, "shell", "settings", "list", "secure"],
             capture_output=True,
         )
@@ -108,7 +103,7 @@ class AndroidDevice(Device):
             output_file = output_directory / "secure_settings_raw.txt"
             output_file.write_bytes(secure_settings_proc.stdout)
 
-        global_settings_proc = subprocess.run(
+        global_settings_proc = run(
             [_adb(), "-s", self.identifier, "shell", "settings", "list", "global"],
             capture_output=True,
         )
@@ -117,7 +112,7 @@ class AndroidDevice(Device):
             output_file = output_directory / "global_settings_raw.txt"
             output_file.write_bytes(global_settings_proc.stdout)
 
-        apps_list_proc = subprocess.run(
+        apps_list_proc = run(
             [
                 _adb(),
                 "-s",
@@ -137,14 +132,17 @@ class AndroidDevice(Device):
             output_file.write_bytes(apps_list_proc.stdout)
 
     def extract_device_logs(
-        self, output_directory: Path, reporter: StatusReporter | None = None
+        self,
+        output_directory: Path,
+        reporter: StatusReporter | None = None,
+        cancelled: threading.Event | None = None,
     ) -> None:
 
         if reporter:
             reporter.progress_changed.emit(0, 4)
             reporter.status_changed.emit("Dumping system log")
 
-        dumpsys_proc = subprocess.run(
+        dumpsys_proc = run(
             [
                 _adb(),
                 "-s",
@@ -159,12 +157,15 @@ class AndroidDevice(Device):
             output_file = output_directory / "dumpsys.log"
             output_file.write_bytes(dumpsys_proc.stdout)
 
+        if cancelled and cancelled.is_set():
+            return
+
         if reporter:
             reporter.progress_changed.emit(1, 4)
             reporter.status_changed.emit("Generating bug report archive")
         output_directory.mkdir(parents=True, exist_ok=True)
         output_file = output_directory / "bugreport-archive.zip"
-        bugreport_proc = subprocess.run(
+        bugreport_proc = run(
             [
                 _adb(),
                 "-s",
@@ -174,25 +175,30 @@ class AndroidDevice(Device):
             ],
             capture_output=True,
         )
+        if cancelled and cancelled.is_set():
+            return
 
         if reporter:
             reporter.progress_changed.emit(2, 4)
             reporter.status_changed.emit("Dumping logcat stats")
 
-        logcat_stats_proc = subprocess.run(
+        logcat_stats_proc = run(
             [_adb(), "-s", self.identifier, "shell", "logcat", "-S", "-b", "all"],
             capture_output=True,
         )
+
         if logcat_stats_proc.stdout:
             output_directory.mkdir(parents=True, exist_ok=True)
             output_file = output_directory / "logcat_stats.log"
             output_file.write_bytes(logcat_stats_proc.stdout)
+        if cancelled and cancelled.is_set():
+            return
 
         if reporter:
             reporter.progress_changed.emit(3, 4)
             reporter.status_changed.emit("Dumping logcat logs")
 
-        logcat_logs_proc = subprocess.run(
+        logcat_logs_proc = run(
             [_adb(), "-s", self.identifier, "shell", "logcat", "-d", "-b", "all"],
             capture_output=True,
         )
@@ -200,6 +206,8 @@ class AndroidDevice(Device):
             output_directory.mkdir(parents=True, exist_ok=True)
             output_file = output_directory / "logcat_log.log"
             output_file.write_bytes(logcat_logs_proc.stdout)
+        if cancelled and cancelled.is_set():
+            return
 
         if reporter:
             reporter.progress_changed.emit(4, 4)
@@ -211,7 +219,7 @@ class AndroidDevice(Device):
         reporter: StatusReporter | None = None,
     ) -> None:
         output_file.parent.mkdir(parents=True, exist_ok=True)
-        self.recording_process = subprocess.Popen(
+        self.recording_process = popen(
             [
                 _scrcpy(),
                 "-s",
@@ -231,7 +239,7 @@ class AndroidDevice(Device):
     ) -> None:
         if self.recording_process:
             if platform.system() == "Windows":
-                subprocess.run(
+                run(
                     ["taskkill", "/pid", str(self.recording_process.pid)],
                     capture_output=True,
                 )
@@ -239,13 +247,62 @@ class AndroidDevice(Device):
                 self.recording_process.terminate()
 
     def screenshot(self, output_file: Path) -> Path:
-        """Take Android screenshot."""
 
         return screenshot(self.identifier, output_file)
 
+    def start_autoscroll(self, direction: str, cancelled: threading.Event) -> None:
+        while not cancelled.is_set():
+            scroll(
+                self.identifier,
+                direction,
+                self.width or 1080,
+                self.height or 1920,
+            )
+            cancelled.wait(timeout=2.0)
+
+    def autoscroll_screenshot(self, output_directory: Path, direction: str, cancelled: threading.Event) -> None:
+
+        output_directory.mkdir(parents=True, exist_ok=True)
+
+        screenshot_count = 0
+        previous_hash = None
+        duplicate_threshold = 5
+
+        while not cancelled.is_set():
+            # Take screenshot
+            output_file = output_directory / f"screenshot_{screenshot_count:04d}.png"
+            screenshot(self.identifier, output_file)
+            screenshot_count += 1
+            logger.debug(f"Taken screenshot {screenshot_count}")
+
+            try:
+                current_hash = average_hash(Image.open(output_file))
+                if previous_hash is not None:
+                    hash_diff = current_hash - previous_hash
+                    if hash_diff < duplicate_threshold:
+                        output_file.unlink()
+                        raise DuplicateImageError(
+                            f"Duplicate images detected (hash difference: {hash_diff}). "
+                            "Autoscroll screenshot terminated."
+                        )
+                previous_hash = current_hash
+            except Exception:
+                raise
+
+            # Scroll
+            scroll(
+                self.identifier,
+                direction,
+                self.width,
+                self.height,
+            )
+
+            # Wait 2 seconds
+            cancelled.wait(timeout=2.0)
+
 
 def get_connected_devices() -> list[AndroidDevice]:
-    proc = subprocess.run([_adb(), "devices"], capture_output=True, text=True)
+    proc = run([_adb(), "devices"], capture_output=True, text=True)
 
     connected_devices: list[AndroidDevice] = []
     for line in proc.stdout.splitlines()[1:]:
@@ -253,9 +310,12 @@ def get_connected_devices() -> list[AndroidDevice]:
         if len(parts) == 2:
             device = AndroidDevice(parts[0], serial=parts[0], os="Android")
             if parts[1] == "device":
-                device.device_name = get_setting(parts[0], "global", "device_name")
-                device.os_version = get_property(parts[0], "ro.build.version.release")
-                device.device_type = get_property(parts[0], "ro.product.model")
+                device.device_name = get_setting(device.identifier, "global", "device_name")
+                device.os_version = get_property(device.identifier, "ro.build.version.release")
+                device.device_type = get_property(device.identifier, "ro.product.model")
+                device.width, device.height = get_window_size(device.identifier)
+
+                get_contacts(device.identifier)
                 device.connection_type = ConnectionType.FULL
 
             connected_devices.append(device)
@@ -263,24 +323,54 @@ def get_connected_devices() -> list[AndroidDevice]:
     return connected_devices
 
 
+def get_contacts(serial: str) -> list[tuple[str, str]]:
+    proc = run(
+        [
+            _adb(),
+            "-s",
+            serial,
+            "shell",
+            "content",
+            "query",
+            "--uri",
+            "content://contacts/phones",
+            "--projection",
+            "name:number",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    contacts: list[tuple[str, str]] = []
+    if "No result found." in proc.stdout:
+        return contacts
+
+    for line in proc.stdout.splitlines():
+        row = line.strip().split(": ", 1)[-1].split(" ", 1)[-1]
+        name = row.split(", ", 1)[0].removeprefix("name=")
+        number = row.split(", ", 1)[-1].removeprefix("number=")
+        contacts.append((name, number))
+
+    return contacts
+
+
 def screenshot(serial: str, output_file: Path) -> Path:
     logger.info(f"Taking Android screenshot of device {serial} to {output_file}")
-    proc = subprocess.run(
+    proc = run(
         [_adb(), "-s", serial, "exec-out", "screencap", "-p"],
         capture_output=True,
     )
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    output_file.write_bytes(proc.stdout)
+    if proc.stdout:
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_bytes(proc.stdout)
 
     return output_file
 
 
-def backup(
-    serial: str, output_file: Path, reporter: StatusReporter | None = None
-) -> Path:
+def backup(serial: str, output_file: Path, reporter: StatusReporter | None = None) -> Path:
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    proc = subprocess.run(
+    run(
         [
             _adb(),
             "-s",
@@ -297,8 +387,6 @@ def backup(
         capture_output=True,
         text=True,
     )
-    logger.info(f"Stdout: {proc.stdout}")
-    logger.info(f"Stderr: {proc.stderr}")
 
     return output_file
 
@@ -310,27 +398,23 @@ def dump(
 ) -> None:
     logger.info(f"Dumping {directory} to {output_directory}")
     output_directory.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
+    run(
         [_adb(), "-s", serial, "pull", directory, str(output_directory)],
         capture_output=True,
     )
 
 
 def ls(serial: str, directory: str) -> list[str]:
-    proc = subprocess.run(
+    proc = run(
         [_adb(), "-s", serial, "shell", "ls", "-1", directory],
         capture_output=True,
         text=True,
     )
-    return [
-        f"{directory}/{line}".strip()
-        for line in proc.stdout.splitlines()
-        if line.strip()
-    ]
+    return [f"{directory}/{line}".strip() for line in proc.stdout.splitlines() if line.strip()]
 
 
 def list_all_packages(serial: str, flag: str = "") -> list[str]:
-    all_packages = subprocess.run(
+    all_packages = run(
         [_adb(), "-s", serial, "shell", "pm", "list", "packages", flag],
         capture_output=True,
         text=True,
@@ -346,7 +430,7 @@ def list_all_packages(serial: str, flag: str = "") -> list[str]:
 
 
 def list_system_packages(serial: str) -> list[str]:
-    output = subprocess.run(
+    output = run(
         [_adb(), "-s", serial, "shell", "pm", "list", "packages", "-s"],
         capture_output=True,
         text=True,
@@ -362,7 +446,7 @@ def list_system_packages(serial: str) -> list[str]:
 
 
 def list_installed_packages(serial: str) -> list[str]:
-    output = subprocess.run(
+    output = run(
         [_adb(), "-s", serial, "shell", "pm", "list", "packages", "-3"],
         capture_output=True,
         text=True,
@@ -378,7 +462,7 @@ def list_installed_packages(serial: str) -> list[str]:
 
 
 def dump_apk(serial: str, package: str, output_directory: Path) -> None:
-    package_paths = subprocess.run(
+    package_paths = run(
         [_adb(), "-s", serial, "shell", "pm", "path", package],
         capture_output=True,
         text=True,
@@ -393,7 +477,7 @@ def dump_apk(serial: str, package: str, output_directory: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for path in package_paths.splitlines():
-        subprocess.run(
+        run(
             [
                 _adb(),
                 "-s",
@@ -408,7 +492,7 @@ def dump_apk(serial: str, package: str, output_directory: Path) -> None:
 
 
 def get_setting(serial: str, namespace: str, setting_name: str) -> str:
-    proc = subprocess.run(
+    proc = run(
         [_adb(), "-s", serial, "shell", "settings", "get", namespace, setting_name],
         capture_output=True,
         text=True,
@@ -418,7 +502,7 @@ def get_setting(serial: str, namespace: str, setting_name: str) -> str:
 
 
 def get_property(serial: str, prop: str) -> str:
-    proc = subprocess.run(
+    proc = run(
         [_adb(), "-s", serial, "shell", "getprop", prop],
         capture_output=True,
         text=True,
@@ -427,7 +511,59 @@ def get_property(serial: str, prop: str) -> str:
     return proc.stdout.strip()
 
 
-def kill_server() -> None:
-    subprocess.run(
-        [_adb(), "kill-server"],
+def get_window_size(serial: str) -> tuple[int, int]:
+    width, height = 0, 0
+    proc = run(
+        [_adb(), "-s", serial, "shell", "wm", "size"],
+        capture_output=True,
+        text=True,
     )
+    if proc.stdout:
+        dimensions = proc.stdout.split(": ")[1].split("x")
+        width = int(dimensions[0])
+        height = int(dimensions[1])
+
+    return width, height
+
+
+def scroll(serial: str, direction: str, width: int, height: int) -> bool:
+    cx, cy = width // 2, height // 2
+
+    match direction:
+        case "up":
+            start, end = (cx, cy // 2), (cx, height)
+        case "down":
+            start, end = (cx, cy + cy // 2), (cx, 0)
+        case "left":
+            start, end = (cx // 2, cy), (width, cy)
+        case "right":
+            start, end = (cx + cx // 2, cy), (0, cy)
+        case _:
+            return False
+
+    x_start, y_start = start
+    x_end, y_end = end
+
+    proc = run(
+        [
+            _adb(),
+            "-s",
+            serial,
+            "shell",
+            "input",
+            "swipe",
+            str(x_start),
+            str(y_start),
+            str(x_end),
+            str(y_end),
+            "800",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    return not proc.stderr
+
+
+def kill_server() -> None:
+    run([_adb(), "kill-server"])

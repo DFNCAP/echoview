@@ -11,6 +11,7 @@ from loguru import logger
 from app.devices.devices import ConnectionType, Device, StatusReporter
 from app.devices.ios_product_types import product_type_to_model
 from app.utils.app_info import AppInfo
+from app.utils.subprocess_helpers import popen, run
 
 
 def _goios() -> str:
@@ -36,9 +37,7 @@ class iOSDevice(Device):
         reporter: StatusReporter | None = None,
         cancelled: threading.Event | None = None,
     ) -> Path:
-        raise NotImplementedError(
-            "Backup functionality is not available for iOS devices"
-        )
+        raise NotImplementedError("Backup functionality is not available for iOS devices")
 
     def extract_contacts(self, output_file: Path) -> Path:
         raise NotImplementedError("Extract contacts functionality not implemented")
@@ -47,23 +46,34 @@ class iOSDevice(Device):
         raise NotImplementedError("Extract device info functionality not implemented")
 
     def extract_device_logs(
-        self, output_directory: Path, reporter: StatusReporter | None = None
+        self,
+        output_directory: Path,
+        reporter: StatusReporter | None = None,
+        cancelled: threading.Event | None = None,
     ) -> None:
         raise NotImplementedError("Extract device logs functionality not implemented")
 
     def screenshot(self, output_file: Path) -> Path:
-        raise NotImplementedError(
-            "Screenshot functionality is not available for iOS devices"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        proc = run(
+            [
+                _goios(),
+                "--udid",
+                self.identifier,
+                "screenshot",
+                "--output",
+                output_file,
+            ],
+            capture_output=True,
+            text=True,
         )
+        return output_file
 
     def start_screen_recording(
         self,
         output_file: Path,
         reporter: StatusReporter | None = None,
     ) -> None:
-        # raise NotImplementedError(
-        #     "Screen recording functionality is not available for iOS devices"
-        # )
         cmd = [
             _uxplay(),
             "-pin",
@@ -83,16 +93,11 @@ class iOSDevice(Device):
         output_file.parent.mkdir(parents=True, exist_ok=True)
         # self.recording_process = subprocess.Popen(cmd)
 
-        self.recording_process = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
+        self.recording_process = popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if self.recording_process.stdout and reporter:
             for line in self.recording_process.stdout:
                 logger.info(line.strip())
-                if (
-                    "An Open-Source AirPlay mirroring and audio-streaming server"
-                    in line
-                ):
+                if "An Open-Source AirPlay mirroring and audio-streaming server" in line:
                     reporter.status_changed.emit("Initialising UxPlay")
                 elif "Initialized server socket" in line:
                     reporter.status_changed.emit("Waiting for connection")
@@ -112,7 +117,7 @@ class iOSDevice(Device):
             pid = self.recording_process.pid
 
             if platform.system() == "Windows":
-                subprocess.run(
+                run(
                     ["taskkill", "/pid", str(pid), "/T"],
                     capture_output=True,
                 )
@@ -120,7 +125,7 @@ class iOSDevice(Device):
                 try:
                     self.recording_process.wait(timeout=3)
                 except subprocess.TimeoutExpired:
-                    subprocess.run(
+                    run(
                         ["taskkill", "/f", "/pid", str(pid), "/T"],
                         capture_output=True,
                     )
@@ -133,9 +138,15 @@ class iOSDevice(Device):
 
             self.recording_process = None
 
+    def start_autoscroll(self, direction: str, cancelled: threading.Event) -> None:
+        raise NotImplementedError("Autoscroll is not supported for iOS devices")
+
+    def autoscroll_screenshot(self, output_directory: Path, direction: str, cancelled: threading.Event) -> None:
+        raise NotImplementedError("Autoscroll screenshot is not supported for iOS devices")
+
 
 def get_connected_devices() -> list[iOSDevice]:
-    proc = subprocess.run([_goios(), "list"], capture_output=True, text=True)
+    proc = run([_goios(), "list"], capture_output=True, text=True)
     # logger.info(proc.stdout)
     data_dict = json.loads(proc.stdout)
     connected_devices: list[iOSDevice] = []
@@ -146,22 +157,16 @@ def get_connected_devices() -> list[iOSDevice]:
         device.serial = device_info.get("SerialNumber", "")
         device.device_name = device_info.get("DeviceName", "")
         device.os_version = device_info.get("ProductVersion", "")
-        device.device_type = product_type_to_model.get(
-            device_info.get("ProductType", ""), ""
-        )
+        device.device_type = product_type_to_model.get(device_info.get("ProductType", ""), "")
         if device_info:
-            device.connection_type = (
-                ConnectionType.FULL if devmode_enabled(udid) else ConnectionType.PARTIAL
-            )
+            device.connection_type = ConnectionType.FULL if devmode_enabled(udid) else ConnectionType.PARTIAL
         connected_devices.append(device)
 
     return connected_devices
 
 
 def get_device_info(udid: str) -> dict[Any, Any]:
-    proc = subprocess.run(
-        [_goios(), "info", "--udid", udid], capture_output=True, text=True
-    )
+    proc = run([_goios(), "info", "--udid", udid], capture_output=True, text=True)
     device_info: dict[Any, Any] = {}
     try:
         device_info = json.loads(proc.stdout)
@@ -172,9 +177,7 @@ def get_device_info(udid: str) -> dict[Any, Any]:
 
 
 def devmode_enabled(udid: str) -> bool:
-    proc = subprocess.run(
-        [_goios(), "devmode", "get", "--udid", udid], capture_output=True, text=True
-    )
+    proc = run([_goios(), "devmode", "get", "--udid", udid], capture_output=True, text=True)
     devmode: dict[str, bool] = {}
     try:
         devmode = json.loads(proc.stdout)
@@ -185,8 +188,21 @@ def devmode_enabled(udid: str) -> bool:
 
 
 def enable_devmode(udid: str) -> None:
-    proc = subprocess.run(
+    run(
         [_goios(), "devmode", "enable", "--enable-post-restart", "--udid", udid],
         capture_output=True,
         text=True,
     )
+
+
+def start_ios_tunnel() -> subprocess.Popen[bytes]:
+    return popen([_goios(), "tunnel", "start", "--userspace"])
+
+
+def stop_ios_tunnel(proc: subprocess.Popen[bytes]) -> None:
+    if proc:
+        proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            proc.kill()

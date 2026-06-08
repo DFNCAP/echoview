@@ -3,6 +3,8 @@
 # nuitka-project: --output-filename=EchoView
 # nuitka-project: --mode=standalone
 # nuitka-project: --output-dir={MAIN_DIRECTORY}/../build/
+# nuitka-project: --nofollow-import-to=scipy
+# nuitka-project: --windows-console-mode=attach
 
 # Plugins
 # nuitka-project: --enable-plugin=pyside6
@@ -44,7 +46,12 @@
 
 # Apple crap
 # nuitka-project-if: {OS} == "Windows":
-#   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../apple/*.msi=apple/
+#   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../apple/Bonjour64.msi=apple/
+#   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../apple/AppleMobileDeviceSupport64.msi=apple/
+
+# Icon
+# nuitka-project-if: {OS} == "Windows":
+#   nuitka-project: --windows-icon-from-ico={MAIN_DIRECTORY}/../assets/voice_256x256.png
 
 import os
 import platform
@@ -88,9 +95,7 @@ def handle_exception(
             title="EchoView crashed",
             text="The EchoView application crashed! Sorry for the inconvenience!",
             information="Please lodge a ticket on Github to report the issue.",
-            details="".join(
-                traceback.format_exception(exc_type, exc_value, exc_traceback)
-            ),
+            details="".join(traceback.format_exception(exc_type, exc_value, exc_traceback)),
         )
 
     sys.exit()
@@ -120,9 +125,7 @@ def main_thread() -> None:
             logger.warning("Exiting application")
         else:
             stacktrace = traceback.format_exc()
-        logger.error(
-            "The main application instantiation has failed with an uncaught exception:"
-        )
+        logger.error("The main application instantiation has failed with an uncaught exception:")
         logger.error(stacktrace)
         show_fatal_error(details=stacktrace)
     finally:
@@ -144,11 +147,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     debug_file_path = AppInfo().app_storage_folder / "DEBUG"
-    if (
-        debug_file_path.exists()
-        and debug_file_path.is_file()
-        or (len(sys.argv) > 1 and sys.argv[1] == "--debug")
-    ):
+    if debug_file_path.exists() and debug_file_path.is_file() or (len(sys.argv) > 1 and sys.argv[1] == "--debug"):
         DEBUG_MODE = True
     else:
         DEBUG_MODE = False
@@ -188,9 +187,7 @@ if __name__ == "__main__":
         logger.debug("Running using Python interpreter")
     else:
         # Configure QtWebEngine locales path
-        os.environ["QTWEBENGINE_LOCALES_PATH"] = str(
-            AppInfo().application_folder / "qtwebengine_locales"
-        )
+        os.environ["QTWEBENGINE_LOCALES_PATH"] = str(AppInfo().application_folder / "qtwebengine_locales")
 
         # MacOS and Windows do not support fork, and can only use spawn
         if SYSTEM != "Linux":
@@ -225,10 +222,7 @@ if __name__ == "__main__":
         logger.error("Failed to install Bonjour")
         sys.exit(1)
 
-    if (
-        SYSTEM == "Windows"
-        and not install_thirdparty.install_AppleMobileDeviceSupport()
-    ):
+    if SYSTEM == "Windows" and not install_thirdparty.install_AppleMobileDeviceSupport():
         logger.error("Failed to install Apple Mobile Device Support")
         sys.exit(1)
 

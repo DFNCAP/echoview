@@ -1,29 +1,26 @@
 from collections.abc import Callable
 
 from loguru import logger
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
-    QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
-from app.devices.devices import Device
+from app.devices.devices import Device, OperationType
 from app.views.device_widget import DeviceWidget
 from app.views.dialogue_box import show_warning
 from app.views.message_box import BinaryChoiceDialog
 
 
 class DevicesView(QWidget):
-    backup_requested = Signal(Device)
-    extract_contacts_requested = Signal(Device)
-    extract_device_info_requested = Signal(Device)
-    extract_device_logs_requested = Signal(Device)
-    screen_recording_requested = Signal(Device)
-    screenshot_requested = Signal(Device)
+    operation_requested = Signal(OperationType, Device)
     cancel_requested = Signal(Device)
+    autoscroll_stop_requested = Signal(Device)
 
     def __init__(self) -> None:
         super().__init__()
@@ -32,19 +29,68 @@ class DevicesView(QWidget):
 
         self._layout = QVBoxLayout()
 
-        # Title
+        # Title with spinner
+        title_layout = QHBoxLayout()
         title = QLabel("Connected Devices")
         title.setStyleSheet("font-weight: bold; font-size: 14px;")
-        self._layout.addWidget(title)
+        title_layout.addWidget(title)
+
+        # Scanning indicator
+        self._scanning_label = QLabel(" - Scanning")
+        self._scanning_label.setStyleSheet("color: #666;")
+        self._spinner = QLabel("⟳")
+        self._spinner.setStyleSheet("font-size: 14px;")
+        self._spinner.hide()
+        self._scanning_label.hide()
+
+        # Spinner animation using character rotation
+        self._spinner_chars = ["|", "/", "-", "\\"]
+        self._spinner_index = 0
+        self._spinner_timer = QTimer()
+        self._spinner_timer.timeout.connect(self._update_spinner)
+        self._spinner_timer.setInterval(100)
+
+        title_layout.addWidget(self._scanning_label)
+        title_layout.addWidget(self._spinner)
+        title_layout.addStretch()
+        self._layout.addLayout(title_layout)
+
+        self._scroll_area = QScrollArea()
+        self._scroll_area.setContentsMargins(0, 0, 0, 0)
+
+        self._scroll_area.setWidgetResizable(True)
+        self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         # Scroll area for device list
         self._devices_container = QWidget()
-        self._devices_layout = QVBoxLayout()
-        self._devices_container.setLayout(self._devices_layout)
-        self._layout.addWidget(self._devices_container)
+        self._devices_container.setContentsMargins(0, 0, 0, 0)
 
-        self._layout.addStretch()
+        self._devices_layout = QVBoxLayout()
+        self._devices_layout.setSpacing(10)
+        self._devices_layout.setContentsMargins(0, 0, 0, 0)
+        self._devices_container.setLayout(self._devices_layout)
+        self._devices_container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        self._scroll_area.setWidget(self._devices_container)
+        self._layout.addWidget(self._scroll_area)
+
+        # self._layout.addStretch()
         self.setLayout(self._layout)
+
+    def _update_spinner(self) -> None:
+        """Update the spinner character."""
+        self._spinner.setText(self._spinner_chars[self._spinner_index])
+        self._spinner_index = (self._spinner_index + 1) % len(self._spinner_chars)
+
+    def set_scanning(self, scanning: bool) -> None:
+        """Show or hide the scanning indicator."""
+        if scanning:
+            self._scanning_label.show()
+            self._spinner.show()
+            self._spinner_timer.start()
+        else:
+            self._scanning_label.hide()
+            self._spinner.hide()
+            self._spinner_timer.stop()
 
     @Slot(object)
     def update_devices(self, devices: list[Device]) -> None:
@@ -64,22 +110,8 @@ class DevicesView(QWidget):
             if device.identifier not in self._device_widget_map:
                 # New device - create widget
                 device_widget = DeviceWidget(device)
-                device_widget.backup_requested.connect(self.backup_requested.emit)
-                device_widget.extract_contacts_requested.connect(
-                    self.extract_contacts_requested.emit
-                )
-                device_widget.extract_device_info_requested.connect(
-                    self.extract_device_info_requested.emit
-                )
-                device_widget.extract_device_logs_requested.connect(
-                    self.extract_device_logs_requested.emit
-                )
-                device_widget.screen_recording_requested.connect(
-                    self.screen_recording_requested.emit
-                )
-                device_widget.screenshot_requested.connect(
-                    self.screenshot_requested.emit
-                )
+                device_widget.operation_requested.connect(self.operation_requested.emit)
+                device_widget.autoscroll_stop_requested.connect(self.autoscroll_stop_requested.emit)
                 device_widget.cancel_requested.connect(self.cancel_requested)
                 self._devices_layout.addWidget(device_widget)
                 self._device_widget_map[device.identifier] = device_widget
@@ -89,10 +121,20 @@ class DevicesView(QWidget):
 
         logger.debug(f"Updated DevicesView with {len(devices)} devices")
 
-    def set_device_busy(self, device_id: str, busy: bool) -> None:
+    def set_device_busy(self, device_id: str, operation: OperationType) -> None:
         """Set busy state for a specific device widget."""
         if device_id in self._device_widget_map:
-            self._device_widget_map[device_id].set_busy(busy)
+            self._device_widget_map[device_id].set_busy(operation)
+
+    def set_device_autoscroll_finished(self, device_id: str) -> None:
+        """Signal that autoscroll has finished for a device."""
+        if device_id in self._device_widget_map:
+            self._device_widget_map[device_id].set_autoscroll_finished()
+
+    def set_device_recording_finished(self, device_id: str) -> None:
+        """Signal that recording has finished while autoscroll may still be running."""
+        if device_id in self._device_widget_map:
+            self._device_widget_map[device_id].set_recording_finished()
 
     def show_operation_waring(self, title: str, message: str) -> None:
         show_warning(title, message)

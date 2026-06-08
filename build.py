@@ -241,16 +241,16 @@ def build() -> None:
         scrcpy_glob = "scrcpy-linux-*.tar.gz"
         go_ios_glob = "go-ios-linux-*.zip"
 
-    if not any(Path("scrcpy").glob(go_ios_glob)):
-        click.echo("Downloading scrcpy")
+    if not any(Path("go-ios").glob(go_ios_glob)):
+        click.echo("Downloading go-ios")
         _download_go_ios()
 
     if platform == "Windows" and not any(Path("wintun").glob("wintun-*.zip")):
         click.echo("Downloading wintun")
         _download_wintun()
 
-    if not any(Path("go-ios").glob(scrcpy_glob)):
-        click.echo("Downloading go-ios")
+    if not any(Path("scrcpy").glob(scrcpy_glob)):
+        click.echo("Downloading scrcpy")
         _download_scrcpy()
 
     if not any(Path("uxplay").glob(uxplay_glob)):
