@@ -79,16 +79,16 @@ class AppInfo:
         self._is_initialized: bool = True
 
     def _resolve_version(self) -> str:
-        """Resolve application version from generated file, git, or package metadata."""
-        # 1. Nuitka / standalone builds with baked-in _version.py
-        try:
-            from app._version import VERSION  # type: ignore[reportMissingImports]
+        # Nuitka build uses generated _version.py file
+        if "__compiled__" in globals():
+            try:
+                from app._version import VERSION
 
-            return VERSION
-        except Exception:
-            pass
+                return VERSION
+            except Exception:
+                return "Unknown version"
 
-        # 2. Running from source with git available (live, before cached package metadata)
+        # Running from source pulls git information
         try:
             describe = subprocess.run(
                 ["git", "describe", "--tags"],
@@ -120,15 +120,7 @@ class AppInfo:
 
             return version
         except Exception:
-            pass
-
-        # 3. Installed package (uv run after sync, pip install, etc.)
-        try:
-            return importlib.metadata.version("echoview")
-        except Exception:
-            pass
-
-        return "Unknown version"
+            return "Unknown version"
 
     @property
     def adb_path(self) -> Path:
