@@ -62,8 +62,6 @@ class OverviewView(QWidget):
         logo.setFont(font)
         logo.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
 
-        # logo.setStyleSheet("background: red")
-
         return logo
 
     def _create_file_selector(self) -> QWidget:
@@ -85,8 +83,6 @@ class OverviewView(QWidget):
         widget = QWidget()
         widget.setLayout(layout)
         widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-        # widget.setStyleSheet("background: green")
 
         return widget
 
@@ -111,8 +107,6 @@ class OverviewView(QWidget):
         job_number.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         job_number.editingFinished.connect(self._on_job_number_changed)
 
-        # job_number.setStyleSheet("background: blue")
-
         return job_number
 
     def _on_job_number_changed(self) -> None:
@@ -123,18 +117,8 @@ class OverviewView(QWidget):
         btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn.clicked.connect(self._on_device_scan_pressed)
 
-        # btn.setStyleSheet("background: red")
-
         return btn
 
     def _on_device_scan_pressed(self) -> None:
         logger.info("Requesting device scan from view")
         self.device_scan_requested.emit()
-
-    # def set_directory_label(self, directory: str) -> None:
-    #     self._dir_entry.setText(directory)
-    #     self.output_directory_changed.emit(directory)
-
-    # def set_job_number(self, job_number: str) -> None:
-    #     self._job_number.setText(job_number)
-    #     self.job_number_changed.emit(job_number)

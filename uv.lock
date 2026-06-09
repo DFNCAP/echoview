@@ -48,9 +48,20 @@ wheels = [
 ]
 
 [[package]]
+name = "dunamai"
+version = "1.26.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9f/67/d5611975faaa5e4a920f4b19e4caccd5df0facb925687850f1e45f5876f2/dunamai-1.26.1.tar.gz", hash = "sha256:3b46007bd65b00b4824ead0a1aee365fd22d0ec2b9c219497d4fd48f52860c8b", size = 45567, upload-time = "2026-04-04T14:07:11.17Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/bc/8b8ec5a4bfc5b9cf3ce27a118339e994f88410be5677c96493e0ea28e76d/dunamai-1.26.1-py3-none-any.whl", hash = "sha256:2727d939c5b4257cb01ea404372803b477f5176e5a347c43beaf89cd5072e853", size = 27332, upload-time = "2026-04-04T14:07:10.079Z" },
+]
+
+[[package]]
 name = "echoview"
-version = "0.0.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "imagehash" },
@@ -62,13 +73,12 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
-build = [
-    { name = "nuitka" },
-]
 dev = [
+    { name = "dunamai" },
     { name = "imageio" },
     { name = "lxml-stubs" },
     { name = "mypy" },
+    { name = "nuitka" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -85,11 +95,12 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-build = [{ name = "nuitka", specifier = ">=4.1" }]
 dev = [
+    { name = "dunamai", specifier = ">=1.26.1" },
     { name = "imageio", specifier = ">=2.37.3" },
     { name = "lxml-stubs", specifier = ">=0.5.1" },
     { name = "mypy", specifier = ">=1.20.2" },
+    { name = "nuitka", specifier = ">=4.1" },
     { name = "pytest", specifier = ">=8.4.1" },
     { name = "ruff", specifier = ">=0.15.12" },
 ]

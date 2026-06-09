@@ -1,6 +1,7 @@
 [project]
 name = "echoview"
-version = "0.0.0" # Fake version, version is set in version.xml file # TODO: Switch to tracking version dynamically
+#version = "0.0.0" # Fake version, version is set in version.xml file # TODO: Switch to tracking version dynamically
+dynamic = ["version"]
 description = "Add your description here"
 readme = "README.md"
 requires-python = "==3.12.*"
@@ -21,9 +22,7 @@ dev = [
     "mypy>=1.20.2",
     "pytest>=8.4.1",
     "ruff>=0.15.12",
-]
-
-build = [
+    "dunamai>=1.26.1",
     "nuitka>=4.1",
 ]
 
@@ -66,3 +65,13 @@ norecursedirs = ['submodules']
 
 [tool.pyright]
 pythonPlatform = "All"
+
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

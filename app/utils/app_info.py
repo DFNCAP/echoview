@@ -1,9 +1,10 @@
+import importlib.metadata
 import os
 import platform
+import subprocess
 import sys
 from pathlib import Path
 
-from lxml import etree, objectify
 from platformdirs import PlatformDirs
 
 
@@ -57,19 +58,7 @@ class AppInfo:
         self._app_name = "EchoView"
         self._app_copyright = ""
 
-        self._app_version = "Unknown version"
-        version_file = str(self._application_folder / "version.xml")
-        if os.path.exists(version_file):
-            root = objectify.parse(version_file, parser=etree.XMLParser(recover=True))
-            ver = root.find("version")
-            if ver is not None and ver.text is not None:
-                self._app_version = ver.text
-
-            # If edge in version_string, append short shal
-            if "edge" in self._app_version.lower():
-                commit = root.find("commit")
-                if commit is not None and commit.text is not None:
-                    self._app_version += f"+{commit[:7]}"
+        self._app_version = self._resolve_version()
 
         # Define important directories using platformdirs
         platform_dirs = PlatformDirs(appname=self._app_name, appauthor=False)
@@ -88,6 +77,58 @@ class AppInfo:
         # Create backup directories
 
         self._is_initialized: bool = True
+
+    def _resolve_version(self) -> str:
+        """Resolve application version from generated file, git, or package metadata."""
+        # 1. Nuitka / standalone builds with baked-in _version.py
+        try:
+            from app._version import VERSION  # type: ignore[reportMissingImports]
+
+            return VERSION
+        except Exception:
+            pass
+
+        # 2. Running from source with git available (live, before cached package metadata)
+        try:
+            describe = subprocess.run(
+                ["git", "describe", "--tags"],
+                capture_output=True,
+                text=True,
+                cwd=self._application_folder,
+                check=True,
+            ).stdout.strip()
+
+            parts = describe.rsplit("-", 2)
+            if len(parts) == 1:
+                tag = parts[0]
+                version = tag
+            else:
+                tag, distance, commit = parts
+                commit = commit.lstrip("g")
+                version = f"{tag}+{distance}+{commit}"
+
+            dirty = (
+                subprocess.run(
+                    ["git", "diff-index", "--quiet", "HEAD", "--"],
+                    capture_output=True,
+                    cwd=self._application_folder,
+                ).returncode
+                != 0
+            )
+            if dirty:
+                version += ".dirty"
+
+            return version
+        except Exception:
+            pass
+
+        # 3. Installed package (uv run after sync, pip install, etc.)
+        try:
+            return importlib.metadata.version("echoview")
+        except Exception:
+            pass
+
+        return "Unknown version"
 
     @property
     def adb_path(self) -> Path:
