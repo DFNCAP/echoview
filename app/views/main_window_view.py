@@ -25,21 +25,18 @@ class MainWindow(QMainWindow):
     def __init__(self, overview: OverviewView, devices: DevicesView) -> None:
         super().__init__()
         self.setWindowTitle(f"EchoView | {AppInfo().app_version}")
-        self.resize(1200, 800)
-        self.setMinimumSize(400, 400)
-        self.setMaximumSize(1600, 1600)
+        self.resize(1000, 600)
+        self.setMinimumSize(1000, 600)
 
         app_layout = QHBoxLayout()
-        app_layout.setContentsMargins(0, 0, 0, 0)  # Space from main layout to border
-        app_layout.setSpacing(0)  # Space between widgets
+        app_layout.setContentsMargins(0, 0, 0, 0)
+        app_layout.setSpacing(0)
 
         self._overview = overview
         self._devices = devices
 
         # Set OverviewView to fixed size based on its content
-        self._overview.setSizePolicy(
-            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred
-        )
+        self._overview.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
 
         # Add divider
         divider = QFrame()
@@ -47,9 +44,7 @@ class MainWindow(QMainWindow):
         divider.setFrameShadow(QFrame.Shadow.Sunken)
 
         # Set DevicesView to be horizontally stretchable
-        self._devices.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
-        )
+        self._devices.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         app_layout.addWidget(self._overview)
         app_layout.addWidget(divider)

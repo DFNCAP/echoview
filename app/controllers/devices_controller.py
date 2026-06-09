@@ -46,7 +46,6 @@ class DeviceOperationRunner(QObject):
             self.operation_error.emit(device_id, operation_type, str(e))
 
     def shutdown(self) -> None:
-        android.kill_server()
         self._executor.shutdown(wait=False, cancel_futures=True)
 
 
@@ -237,15 +236,7 @@ class DevicesController(QObject):
         def backup_operation() -> Path:
             return device.backup(output_file.resolve(), reporter, self._cancel_events[device.identifier])
 
-        if self._view.show_binary_choice(
-            title="Device Backup",
-            text="Device Backup",
-            information="This operation may take a long time to complete. Proceed?",
-        ):
-            self._runner.submit(device.identifier, OperationType.BACKUP, backup_operation)
-        else:
-            logger.info("Setting device not busy")
-            self._view.set_device_busy(device.identifier, OperationType.IDLE)
+        self._runner.submit(device.identifier, OperationType.BACKUP, backup_operation)
 
     @Slot(Device)
     def _on_contacts_extraction_requested(self, device: Device) -> None:
@@ -344,10 +335,106 @@ class DevicesController(QObject):
             / f"screenshot_{get_timestamp()}.png"
         )
 
-        def screenshot_operation() -> Path:
-            return device.screenshot(output_file.resolve())
+        if (
+            device.os == "iOS"
+            and not ios.dev_image_mounted(device.identifier)
+            and ios.major_version(device.os_version) < 17
+        ):
 
-        self._runner.submit(device.identifier, OperationType.SCREENSHOT, screenshot_operation)
+            def screenshot_operation() -> Path:
+                ios.mount_dev_image(device.identifier)
+                return device.screenshot(output_file.resolve())
+
+            if self._view.show_binary_choice(
+                title="Mount Developer Image",
+                text="Mount Developer Image",
+                information="iOS 16 devices require a developer image to be mounted before taking a screenshot. Proceed?",
+            ):
+                self._runner.submit(device.identifier, OperationType.SCREENSHOT, screenshot_operation)
+            else:
+                self._view.set_device_busy(device.identifier, OperationType.IDLE)
+
+        else:
+
+            def screenshot_operation() -> Path:
+                return device.screenshot(output_file.resolve())
+
+            self._runner.submit(device.identifier, OperationType.SCREENSHOT, screenshot_operation)
+
+    @Slot(Device, str)
+    def _on_autoscroll_requested(self, device: Device, direction: str) -> None:
+        if device.os == "iOS":
+            self._view.show_operation_waring(
+                title="iOS Accessibility Options",
+                message="iOS requires Voice Control to be enabled before proceeding. Please ensure on in Settings > Accessibility > Voice Control.",
+            )
+
+        if device.identifier not in self._autoscroll_events:
+            self._autoscroll_events[device.identifier] = threading.Event()
+        else:
+            self._autoscroll_events[device.identifier].clear()
+
+        def autoscroll_operation() -> None:
+            device.start_autoscroll(direction, self._autoscroll_events[device.identifier])
+
+        self._runner.submit(device.identifier, OperationType.AUTOSCROLL, autoscroll_operation)
+
+    @Slot(Device, str)
+    def _on_autoscroll_screenshot_requested(self, device: Device, direction: str) -> None:
+        if device.os == "iOS":
+            self._view.show_operation_waring(
+                title="iOS Accessibility Options",
+                message="iOS requires Voice Control to be enabled before proceeding. Please ensure on in Settings > Accessibility > Voice Control.",
+            )
+
+        output_directory = (
+            self._model.output_directory
+            / (self._model.job_number or device.identifier)
+            / f"autoscroll_screenshots_{get_timestamp()}"
+        )
+
+        # Create or reset autoscroll screenshot event
+        if device.identifier not in self._autoscroll_events:
+            self._autoscroll_events[device.identifier] = threading.Event()
+        else:
+            self._autoscroll_events[device.identifier].clear()
+
+        if (
+            device.os == "iOS"
+            and not ios.dev_image_mounted(device.identifier)
+            and ios.major_version(device.os_version) < 17
+        ):
+
+            def autoscroll_screenshot_operation() -> None:
+                ios.mount_dev_image(device.identifier)
+                device.autoscroll_screenshot(
+                    output_directory.resolve(), direction, self._autoscroll_events[device.identifier]
+                )
+
+            if self._view.show_binary_choice(
+                title="Mount Developer Image",
+                text="Mount Developer Image",
+                information="iOS 16 devices require a developer image to be mounted before taking a screenshot. Proceed?",
+            ):
+                self._runner.submit(
+                    device.identifier, OperationType.AUTOSCROLL_SCREENSHOT, autoscroll_screenshot_operation
+                )
+            else:
+                self._view.set_device_busy(device.identifier, OperationType.IDLE)
+
+        else:
+
+            def autoscroll_screenshot_operation() -> None:
+                device.autoscroll_screenshot(
+                    output_directory.resolve(), direction, self._autoscroll_events[device.identifier]
+                )
+
+            self._runner.submit(device.identifier, OperationType.AUTOSCROLL_SCREENSHOT, autoscroll_screenshot_operation)
+
+    @Slot(Device)
+    def _on_autoscroll_stop_requested(self, device: Device) -> None:
+        if device.identifier in self._autoscroll_events:
+            self._autoscroll_events[device.identifier].set()
 
     @Slot(Device)
     def _on_cancel_requested(self, device: Device) -> None:
@@ -370,58 +457,18 @@ class DevicesController(QObject):
         if widget:
             widget.set_status("Cancelling current operation, please wait")
 
-    @Slot(Device, str)
-    def _on_autoscroll_requested(self, device: Device, direction: str) -> None:
-        # Create or reset autoscroll event
-        if device.identifier not in self._autoscroll_events:
-            self._autoscroll_events[device.identifier] = threading.Event()
-        else:
-            self._autoscroll_events[device.identifier].clear()
-
-        def autoscroll_operation() -> None:
-            device.start_autoscroll(direction, self._autoscroll_events[device.identifier])
-
-        self._runner.submit(device.identifier, OperationType.AUTOSCROLL, autoscroll_operation)
-
     @Slot(Device)
-    def _on_autoscroll_stop_requested(self, device: Device) -> None:
-        if device.identifier in self._autoscroll_events:
-            self._autoscroll_events[device.identifier].set()
-
-    @Slot(Device, str)
-    def _on_autoscroll_screenshot_requested(self, device: Device, direction: str) -> None:
-        output_directory = (
-            self._model.output_directory
-            / (self._model.job_number or device.identifier)
-            / f"autoscroll_screenshots_{get_timestamp()}"
-        )
-
-        # Create or reset autoscroll screenshot event
-        if device.identifier not in self._autoscroll_events:
-            self._autoscroll_events[device.identifier] = threading.Event()
-        else:
-            self._autoscroll_events[device.identifier].clear()
-
-        def autoscroll_screenshot_operation() -> None:
-            device.autoscroll_screenshot(
-                output_directory.resolve(),
-                direction,
-                self._autoscroll_events[device.identifier],
-            )
-
-        self._runner.submit(
-            device.identifier,
-            OperationType.AUTOSCROLL_SCREENSHOT,
-            autoscroll_screenshot_operation,
-        )
-
     def _on_enable_devmode_requested(self, device: Device) -> None:
+        def enable_dev_mode_operation() -> None:
+            ios.enable_devmode(device.identifier)
+            if float(device.os_version) < 17.0 and not ios.dev_image_mounted(device.identifier):
+                ios.mount_dev_image(device.identifier)
 
-        self._runner.submit(
-            device.identifier, OperationType.ENABLE_DEV_MODE, lambda: ios.enable_devmode(device.identifier)
-        )
+        self._runner.submit(device.identifier, OperationType.ENABLE_DEV_MODE, enable_dev_mode_operation)
 
     def shutdown(self) -> None:
+        android.kill_server()
+
         # Kill all pending tasks before shutting down
         for _, event in self._cancel_events.items():
             event.set()

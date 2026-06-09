@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QStyle,
     QVBoxLayout,
     QWidget,
@@ -31,28 +32,25 @@ class OverviewView(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
-        logger.debug("Initializing OverviewView")
 
-        self._layout = QVBoxLayout()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
         self._logo = self._create_logo()
-        self._layout.addWidget(self._logo)
+        layout.addWidget(self._logo)
 
         self._file_selector = self._create_file_selector()
-        self._layout.addWidget(self._file_selector)
+        layout.addWidget(self._file_selector)
 
         self._job_number = self._create_job_number_field()
-        self._layout.addWidget(self._job_number)
+        layout.addWidget(self._job_number)
+
+        layout.addStretch()
 
         self._device_scan_btn = self._create_device_scan_btn()
-        self._layout.addWidget(self._device_scan_btn)
+        layout.addWidget(self._device_scan_btn)
 
-        self.setLayout(self._layout)
-
-        # Constrain width to logo size + layout padding so logo isn't cut off
-        margins = self._layout.contentsMargins()
-        self.setMaximumWidth(
-            self._logo.sizeHint().width() + margins.left() + margins.right()
-        )
+        self.setLayout(layout)
 
     def _create_logo(self) -> QWidget:
         logo = QLabel(LOGO)
@@ -62,12 +60,17 @@ class OverviewView(QWidget):
         font = QFont("monospace")
         font.setStyleHint(QFont.StyleHint.TypeWriter)
         logo.setFont(font)
+        logo.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
+
+        # logo.setStyleSheet("background: red")
 
         return logo
 
     def _create_file_selector(self) -> QWidget:
         layout = QHBoxLayout()
-        self._dir_entry = QLineEdit(placeholderText="output directory")
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(1)
+        self._dir_entry = QLineEdit(placeholderText="Output Directory")
         self._dir_entry.editingFinished.connect(self._on_output_directory_changed)
 
         layout.addWidget(self._dir_entry)
@@ -75,12 +78,15 @@ class OverviewView(QWidget):
         btn = QPushButton()
         btn.setToolTip("Select Directory")
         btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon))
-        btn.setFixedSize(28, 28)
+        btn.setFixedSize(25, 25)
         btn.clicked.connect(self._pick_directory)
         layout.addWidget(btn)
 
         widget = QWidget()
         widget.setLayout(layout)
+        widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        # widget.setStyleSheet("background: green")
 
         return widget
 
@@ -101,8 +107,12 @@ class OverviewView(QWidget):
         self.output_directory_changed.emit(Path(self._dir_entry.text()).resolve())
 
     def _create_job_number_field(self) -> QLineEdit:
-        job_number = QLineEdit(placeholderText="job number")
+        job_number = QLineEdit(placeholderText="Job Number")
+        job_number.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         job_number.editingFinished.connect(self._on_job_number_changed)
+
+        # job_number.setStyleSheet("background: blue")
+
         return job_number
 
     def _on_job_number_changed(self) -> None:
@@ -110,7 +120,11 @@ class OverviewView(QWidget):
 
     def _create_device_scan_btn(self) -> QPushButton:
         btn = QPushButton("Scan for Devices")
+        btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn.clicked.connect(self._on_device_scan_pressed)
+
+        # btn.setStyleSheet("background: red")
+
         return btn
 
     def _on_device_scan_pressed(self) -> None:

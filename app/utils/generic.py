@@ -1,6 +1,6 @@
 import os
+import platform
 import shutil
-import subprocess
 import sys
 import tarfile
 import tempfile
@@ -11,6 +11,7 @@ from pathlib import Path
 from loguru import logger
 
 import app.views.dialogue_box as dialogue
+from app.utils.subprocess_helpers import popen, run
 
 
 def get_timestamp() -> str:
@@ -35,9 +36,9 @@ def platform_specific_open(path: str | Path) -> None:
     if sys.platform == "darwin":
         logger.info(f"Opening {path} with subprocess open on MacOS")
         if p.is_dir() and p.suffix == ".app":
-            subprocess.Popen(["open", path, "-R"])
+            popen(["open", path, "-R"])
         else:
-            subprocess.Popen(["open", path])
+            popen(["open", path])
     elif sys.platform == "win32":
         logger.info(f"Opening {path} with startfile on Windows")
         try:
@@ -45,12 +46,10 @@ def platform_specific_open(path: str | Path) -> None:
         except OSError as e:
             # Handle cases where no default application is associated
             if e.winerror == -2147221003:  # Application not found
-                logger.warning(
-                    f"No default application found for {path}, trying notepad"
-                )
+                logger.warning(f"No default application found for {path}, trying notepad")
                 # Try to open with notepad as fallback
                 try:
-                    subprocess.Popen(["notepad.exe", path])
+                    popen(["notepad.exe", path])
                 except Exception as notepad_error:
                     logger.error(f"Failed to open with notepad: {notepad_error}")
                     dialogue.show_warning(
@@ -64,7 +63,7 @@ def platform_specific_open(path: str | Path) -> None:
                 raise
     elif sys.platform == "linux":
         logger.info(f"Opening {path} with xdg-open on Linux")
-        subprocess.Popen(["xdg-open", path], env=dict(os.environ, LD_LIBRARY_PATH=""))
+        popen(["xdg-open", path], env=dict(os.environ, LD_LIBRARY_PATH=""))
     else:
         logger.error("Attempting to open directory on an unknown system")
 
@@ -119,3 +118,12 @@ def extract(archive: Path, destination: Path) -> None:
             tar_ref.extractall(destination)
     else:
         raise ValueError(f"Unsupported archive format: {archive}")
+
+
+def say(text: str) -> None:
+    system = platform.system()
+    if system == "Windows":
+        script = f"Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('{text}')"
+        run(["powershell", "-Command", script], check=True)
+    else:
+        run(["espeak-ng", text], check=True)

@@ -2,16 +2,23 @@ import json
 import platform
 import subprocess
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from loguru import logger
+from imagehash import average_hash
+from PIL import Image
 
 from app.devices.devices import ConnectionType, Device, StatusReporter
 from app.devices.ios_product_types import product_type_to_model
 from app.utils.app_info import AppInfo
+from app.utils.generic import say
 from app.utils.subprocess_helpers import popen, run
+
+
+class DuplicateImageError(Exception):
+    """Raised when duplicate images are detected during autoscroll screenshot."""
 
 
 def _goios() -> str:
@@ -43,7 +50,32 @@ class iOSDevice(Device):
         raise NotImplementedError("Extract contacts functionality not implemented")
 
     def extract_device_info(self, output_directory: Path) -> None:
-        raise NotImplementedError("Extract device info functionality not implemented")
+        installed_apps_proc = run(
+            [_goios(), "--udid", self.identifier, "apps", "--list"], capture_output=True, text=True
+        )
+        if installed_apps_proc.stdout:
+            output_directory.mkdir(parents=True, exist_ok=True)
+            output_file = output_directory / "installed_apps.txt"
+            output_file.write_text(installed_apps_proc.stdout)
+
+        system_apps_proc = run(
+            [_goios(), "--udid", self.identifier, "apps", "--list", "--system"], capture_output=True, text=True
+        )
+        if system_apps_proc.stdout:
+            output_directory.mkdir(parents=True, exist_ok=True)
+            output_file = output_directory / "system_apps.txt"
+            output_file.write_text(system_apps_proc.stdout)
+
+        info_proc = run(
+            [_goios(), "--udid", self.identifier, "info"],
+            capture_output=True,
+            text=True,
+        )
+        if info_proc.stdout:
+            output_directory.mkdir(parents=True, exist_ok=True)
+            output_file = output_directory / "device_info.json"
+            with output_file.open("w") as file:
+                json.dump(json.loads(info_proc.stdout), file, indent=4)
 
     def extract_device_logs(
         self,
@@ -54,20 +86,7 @@ class iOSDevice(Device):
         raise NotImplementedError("Extract device logs functionality not implemented")
 
     def screenshot(self, output_file: Path) -> Path:
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-        proc = run(
-            [
-                _goios(),
-                "--udid",
-                self.identifier,
-                "screenshot",
-                "--output",
-                output_file,
-            ],
-            capture_output=True,
-            text=True,
-        )
-        return output_file
+        return screenshot(self.identifier, output_file)
 
     def start_screen_recording(
         self,
@@ -96,7 +115,6 @@ class iOSDevice(Device):
         self.recording_process = popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if self.recording_process.stdout and reporter:
             for line in self.recording_process.stdout:
-                logger.info(line.strip())
                 if "An Open-Source AirPlay mirroring and audio-streaming server" in line:
                     reporter.status_changed.emit("Initialising UxPlay")
                 elif "Initialized server socket" in line:
@@ -139,10 +157,39 @@ class iOSDevice(Device):
             self.recording_process = None
 
     def start_autoscroll(self, direction: str, cancelled: threading.Event) -> None:
-        raise NotImplementedError("Autoscroll is not supported for iOS devices")
+        while not cancelled.is_set():
+            scroll(direction)
+            cancelled.wait(timeout=2.0)
 
     def autoscroll_screenshot(self, output_directory: Path, direction: str, cancelled: threading.Event) -> None:
-        raise NotImplementedError("Autoscroll screenshot is not supported for iOS devices")
+        output_directory.mkdir(parents=True, exist_ok=True)
+
+        screenshot_count = 0
+        previous_hash = None
+        duplicate_threshold = 5
+
+        while not cancelled.is_set():
+            # Take screenshot
+            output_file = output_directory / f"screenshot_{screenshot_count:04d}.png"
+            screenshot(self.identifier, output_file)
+            screenshot_count += 1
+
+            try:
+                current_hash = average_hash(Image.open(output_file))
+                if previous_hash is not None:
+                    hash_diff = current_hash - previous_hash
+                    if hash_diff < duplicate_threshold:
+                        output_file.unlink()
+                        raise DuplicateImageError(
+                            f"Duplicate images detected (hash difference: {hash_diff}). "
+                            "Autoscroll screenshot terminated."
+                        )
+                previous_hash = current_hash
+            except Exception:
+                raise
+
+            scroll(direction)
+            cancelled.wait(timeout=2.0)
 
 
 def get_connected_devices() -> list[iOSDevice]:
@@ -176,6 +223,23 @@ def get_device_info(udid: str) -> dict[Any, Any]:
     return device_info
 
 
+def screenshot(udid: str, output_file: Path) -> Path:
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    proc = run(
+        [
+            _goios(),
+            "--udid",
+            udid,
+            "screenshot",
+            "--output",
+            output_file,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    return output_file
+
+
 def devmode_enabled(udid: str) -> bool:
     proc = run([_goios(), "devmode", "get", "--udid", udid], capture_output=True, text=True)
     devmode: dict[str, bool] = {}
@@ -193,6 +257,48 @@ def enable_devmode(udid: str) -> None:
         capture_output=True,
         text=True,
     )
+
+
+def dev_image_mounted(udid: str) -> bool:
+    proc = run(
+        [_goios(), "image", "list", "--udid", udid],
+        capture_output=True,
+        text=True,
+    )
+    if proc.stderr:
+        for line in proc.stderr.splitlines():
+            if "info" in line and "warning" not in line:
+                output = json.loads(line)
+                return output.get("msg", "none") != "none"
+
+    return False
+
+
+def mount_dev_image(udid: str) -> None:
+    run(
+        [_goios(), "image", "auto", "--udid", udid],
+        capture_output=True,
+        text=True,
+    )
+    time.sleep(1)
+
+
+def version_to_int(version: str) -> int:
+    parts = version.split(".")
+    parts += ["0"] * (3 - len(parts))
+    major, minor, patch = (int(p) for p in parts)
+    return major * 10000 + minor * 100 + patch
+
+
+def major_version(version: str) -> int:
+    parts = version.split(".")
+    major = int(parts[0])
+    return major
+
+
+def scroll(direction: str) -> None:
+    command = f"scroll {direction}"
+    say(command)
 
 
 def start_ios_tunnel() -> subprocess.Popen[bytes]:

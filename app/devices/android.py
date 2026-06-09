@@ -1,5 +1,4 @@
 import platform
-import subprocess
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -273,7 +272,6 @@ class AndroidDevice(Device):
             output_file = output_directory / f"screenshot_{screenshot_count:04d}.png"
             screenshot(self.identifier, output_file)
             screenshot_count += 1
-            logger.debug(f"Taken screenshot {screenshot_count}")
 
             try:
                 current_hash = average_hash(Image.open(output_file))
@@ -355,7 +353,6 @@ def get_contacts(serial: str) -> list[tuple[str, str]]:
 
 
 def screenshot(serial: str, output_file: Path) -> Path:
-    logger.info(f"Taking Android screenshot of device {serial} to {output_file}")
     proc = run(
         [_adb(), "-s", serial, "exec-out", "screencap", "-p"],
         capture_output=True,

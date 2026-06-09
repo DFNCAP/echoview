@@ -25,7 +25,6 @@ class DeviceWidget(QWidget):
 
     def __init__(self, device: Device) -> None:
         super().__init__()
-        # self.setContentsMargins(0, 0, 0, 0)
 
         self._device = device
         self._status = "Idle"
@@ -328,7 +327,7 @@ class DeviceWidget(QWidget):
         for btn, _ in self._action_rows:
             btn.setEnabled(full_connection or (partial_connection and "Screenshot" not in btn.text()))
 
-        for btn, combo in self._action_rows:
+        for btn, combo in self._combo_rows:
             btn.setEnabled(full_connection or (partial_connection and "Screenshot" not in btn.text()))
             combo.setEnabled(full_connection or (partial_connection and "Screenshot" not in btn.text()))
 
