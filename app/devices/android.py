@@ -78,10 +78,7 @@ class AndroidDevice(Device):
         return output_file
 
     def extract_device_info(
-        self,
-        output_directory: Path,
-        reporter: StatusReporter | None = None,
-        cancelled: threading.Event | None = None,
+        self, output_directory: Path, reporter: StatusReporter | None = None, cancelled: threading.Event | None = None
     ) -> None:
         if reporter:
             reporter.status_changed.emit(self.identifier, "Dumping props")

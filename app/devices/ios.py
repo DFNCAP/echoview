@@ -52,7 +52,9 @@ class iOSDevice(Device):
     def extract_contacts(self, output_file: Path) -> Path:
         raise NotImplementedError("Extract contacts functionality not implemented")
 
-    def extract_device_info(self, output_directory: Path) -> None:
+    def extract_device_info(
+        self, output_directory: Path, reporter: StatusReporter | None = None, cancelled: threading.Event | None = None
+    ) -> None:
         installed_apps_proc = run(
             [_goios(), "--udid", self.identifier, "apps", "--list"], capture_output=True, text=True
         )
