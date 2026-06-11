@@ -53,8 +53,8 @@ class AndroidDevice(Device):
             if cancelled and cancelled.is_set():
                 return Path()
             if reporter:
-                reporter.progress_changed.emit(i, len(items_to_dump))
-                reporter.status_changed.emit(f"Dumping {item}")
+                reporter.progress_changed.emit(self.identifier, i, len(items_to_dump))
+                reporter.status_changed.emit(self.identifier, f"Dumping {item}")
 
             if item in installed_packages:
                 dump_apk(self.identifier, item, output_directory / "installed_packages")
@@ -77,13 +77,25 @@ class AndroidDevice(Device):
             raise NoContactsFoundError("No contacts found on the device")
         return output_file
 
-    def extract_device_info(self, output_directory: Path) -> None:
+    def extract_device_info(
+        self,
+        output_directory: Path,
+        reporter: StatusReporter | None = None,
+        cancelled: threading.Event | None = None,
+    ) -> None:
+        if reporter:
+            reporter.status_changed.emit(self.identifier, "Dumping props")
+            reporter.progress_changed.emit(self.identifier, 0, 4)
+
         getprop_proc = run([_adb(), "-s", self.identifier, "shell", "getprop"], capture_output=True)
         if getprop_proc.stdout:
             output_directory.mkdir(parents=True, exist_ok=True)
             output_file = output_directory / "getprop_raw.txt"
             output_file.write_bytes(getprop_proc.stdout)
 
+        if reporter:
+            reporter.status_changed.emit(self.identifier, "Dumping system settings")
+            reporter.progress_changed.emit(self.identifier, 1, 4)
         system_settings_proc = run(
             [_adb(), "-s", self.identifier, "shell", "settings", "list", "system"],
             capture_output=True,
@@ -93,6 +105,9 @@ class AndroidDevice(Device):
             output_file = output_directory / "system_settings_raw.txt"
             output_file.write_bytes(system_settings_proc.stdout)
 
+        if reporter:
+            reporter.status_changed.emit(self.identifier, "Dumping secure settings")
+            reporter.progress_changed.emit(self.identifier, 2, 4)
         secure_settings_proc = run(
             [_adb(), "-s", self.identifier, "shell", "settings", "list", "secure"],
             capture_output=True,
@@ -102,6 +117,9 @@ class AndroidDevice(Device):
             output_file = output_directory / "secure_settings_raw.txt"
             output_file.write_bytes(secure_settings_proc.stdout)
 
+        if reporter:
+            reporter.status_changed.emit(self.identifier, "Dumping global settings")
+            reporter.progress_changed.emit(self.identifier, 3, 4)
         global_settings_proc = run(
             [_adb(), "-s", self.identifier, "shell", "settings", "list", "global"],
             capture_output=True,
@@ -111,6 +129,9 @@ class AndroidDevice(Device):
             output_file = output_directory / "global_settings_raw.txt"
             output_file.write_bytes(global_settings_proc.stdout)
 
+        if reporter:
+            reporter.status_changed.emit(self.identifier, "Dumping app list")
+            reporter.progress_changed.emit(self.identifier, 4, 4)
         apps_list_proc = run(
             [
                 _adb(),
@@ -138,8 +159,8 @@ class AndroidDevice(Device):
     ) -> None:
 
         if reporter:
-            reporter.progress_changed.emit(0, 4)
-            reporter.status_changed.emit("Dumping system log")
+            reporter.progress_changed.emit(self.identifier, 0, 4)
+            reporter.status_changed.emit(self.identifier, "Dumping system log")
 
         dumpsys_proc = run(
             [
@@ -160,8 +181,8 @@ class AndroidDevice(Device):
             return
 
         if reporter:
-            reporter.progress_changed.emit(1, 4)
-            reporter.status_changed.emit("Generating bug report archive")
+            reporter.progress_changed.emit(self.identifier, 1, 4)
+            reporter.status_changed.emit(self.identifier, "Generating bug report archive")
         output_directory.mkdir(parents=True, exist_ok=True)
         output_file = output_directory / "bugreport-archive.zip"
         bugreport_proc = run(
@@ -178,8 +199,8 @@ class AndroidDevice(Device):
             return
 
         if reporter:
-            reporter.progress_changed.emit(2, 4)
-            reporter.status_changed.emit("Dumping logcat stats")
+            reporter.progress_changed.emit(self.identifier, 2, 4)
+            reporter.status_changed.emit(self.identifier, "Dumping logcat stats")
 
         logcat_stats_proc = run(
             [_adb(), "-s", self.identifier, "shell", "logcat", "-S", "-b", "all"],
@@ -194,8 +215,8 @@ class AndroidDevice(Device):
             return
 
         if reporter:
-            reporter.progress_changed.emit(3, 4)
-            reporter.status_changed.emit("Dumping logcat logs")
+            reporter.progress_changed.emit(self.identifier, 3, 4)
+            reporter.status_changed.emit(self.identifier, "Dumping logcat logs")
 
         logcat_logs_proc = run(
             [_adb(), "-s", self.identifier, "shell", "logcat", "-d", "-b", "all"],
@@ -209,8 +230,8 @@ class AndroidDevice(Device):
             return
 
         if reporter:
-            reporter.progress_changed.emit(4, 4)
-            reporter.status_changed.emit("Finalising")
+            reporter.progress_changed.emit(self.identifier, 4, 4)
+            reporter.status_changed.emit(self.identifier, "Finalising")
 
     def start_screen_recording(
         self,
@@ -218,6 +239,8 @@ class AndroidDevice(Device):
         reporter: StatusReporter | None = None,
     ) -> None:
         output_file.parent.mkdir(parents=True, exist_ok=True)
+        if reporter:
+            reporter.status_changed.emit(self.identifier, "Screen recording")
         self.recording_process = popen(
             [
                 _scrcpy(),
@@ -313,7 +336,6 @@ def get_connected_devices() -> list[AndroidDevice]:
                 device.device_type = get_property(device.identifier, "ro.product.model")
                 device.width, device.height = get_window_size(device.identifier)
 
-                get_contacts(device.identifier)
                 device.connection_type = ConnectionType.FULL
 
             connected_devices.append(device)
@@ -322,6 +344,33 @@ def get_connected_devices() -> list[AndroidDevice]:
 
 
 def get_contacts(serial: str) -> list[tuple[str, str]]:
+    # proc = run(
+    #     [
+    #         _adb(),
+    #         "-s",
+    #         serial,
+    #         "shell",
+    #         "content",
+    #         "query",
+    #         "--uri",
+    #         "content://contacts/phones",
+    #         "--projection",
+    #         "name:number",
+    #     ],
+    #     capture_output=True,
+    #     text=True,
+    # )
+
+    # contacts: list[tuple[str, str]] = []
+    # if "No result found." in proc.stdout:
+    #     return contacts
+
+    # for line in proc.stdout.splitlines():
+    #     row = line.strip().split(": ", 1)[-1].split(" ", 1)[-1]
+    #     name = row.split(", ", 1)[0].removeprefix("name=")
+    #     number = row.split(", ", 1)[-1].removeprefix("number=")
+    #     contacts.append((name, number))
+
     proc = run(
         [
             _adb(),
@@ -331,9 +380,9 @@ def get_contacts(serial: str) -> list[tuple[str, str]]:
             "content",
             "query",
             "--uri",
-            "content://contacts/phones",
+            "content://com.android.contacts/data",
             "--projection",
-            "name:number",
+            "display_name:data1",
         ],
         capture_output=True,
         text=True,
@@ -345,9 +394,10 @@ def get_contacts(serial: str) -> list[tuple[str, str]]:
 
     for line in proc.stdout.splitlines():
         row = line.strip().split(": ", 1)[-1].split(" ", 1)[-1]
-        name = row.split(", ", 1)[0].removeprefix("name=")
-        number = row.split(", ", 1)[-1].removeprefix("number=")
-        contacts.append((name, number))
+        name = row.split(", ", 1)[0].removeprefix("display_name=")
+        number = row.split(", ", 1)[-1].removeprefix("data1=")
+        if name != number:
+            contacts.append((name, number))
 
     return contacts
 

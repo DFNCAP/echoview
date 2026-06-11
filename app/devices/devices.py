@@ -10,8 +10,8 @@ from PySide6.QtCore import QObject, Signal
 
 
 class StatusReporter(QObject):
-    status_changed = Signal(str)
-    progress_changed = Signal(int, int)
+    status_changed = Signal(str, str)
+    progress_changed = Signal(str, int, int)
 
 
 class ConnectionType(Enum):
@@ -28,19 +28,13 @@ class OperationType(IntEnum):
     EXTRACT_DEVICE_INFO = auto()
     EXTRACT_DEVICE_LOGS = auto()
     SCREEN_RECORDING = auto()
+    STOP_SCREEN_RECORDING = auto()
     SCREENSHOT = auto()
 
     AUTOSCROLL = auto()
-    AUTOSCROLL_LEFT = auto()
-    AUTOSCROLL_RIGHT = auto()
-    AUTOSCROLL_UP = auto()
-    AUTOSCROLL_DOWN = auto()
-
+    STOP_AUTOSCROLL = auto()
     AUTOSCROLL_SCREENSHOT = auto()
-    AUTOSCROLL_SCREENSHOT_LEFT = auto()
-    AUTOSCROLL_SCREENSHOT_RIGHT = auto()
-    AUTOSCROLL_SCREENSHOT_UP = auto()
-    AUTOSCROLL_SCREENSHOT_DOWN = auto()
+    STOP_AUTOSCROLL_SCREENSHOT = auto()
 
     IOS_TUNNEL = auto()
     ENABLE_DEV_MODE = auto()
@@ -77,7 +71,12 @@ class Device(ABC):
         pass
 
     @abstractmethod
-    def extract_device_info(self, output_directory: Path) -> None:
+    def extract_device_info(
+        self,
+        output_directory: Path,
+        reporter: StatusReporter | None = None,
+        cancelled: threading.Event | None = None,
+    ) -> None:
         """Take a screenshot and return the output path."""
         pass
 

@@ -41,9 +41,7 @@ class _BaseDialogue(QDialog):
         self.setObjectName("dialogue")
 
         # Dynamic sizing
-        self.setSizePolicy(
-            QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        )
+        self.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
 
     def exec(self) -> int:
         """Executes the message box and returns the result.
@@ -53,9 +51,7 @@ class _BaseDialogue(QDialog):
         """
         logger.info(f"Showing {self._dialogue_type} with title: {self.windowTitle()}")
         result = super().exec()
-        logger.info(
-            f"Finished showing {self._dialogue_type} [{self.windowTitle()}] with result: {result}"
-        )
+        logger.info(f"Finished showing {self._dialogue_type} [{self.windowTitle()}] with result: {result}")
         return result
 
     def exec_(self) -> int:
@@ -88,9 +84,7 @@ def show_warning(
     :type parent: QWidget | None
     """
     # jscpd:ignore-end
-    logger.info(
-        f"Showing warning box with input: [{title}], [{text}], [{information}], [{details}]"
-    )
+    logger.debug(f"Showing warning box with input: [{title}], [{text}], [{information}], [{details}]")
 
     # Set up the message box
     warning_message_box = QMessageBox(parent=parent)
@@ -194,16 +188,12 @@ class FatalErrorDialog(_BaseDialogue):
             self.adjustSize()
 
         self.close_btn.clicked.connect(self.close)
-        self.open_log_btn.clicked.connect(
-            lambda: generic.platform_specific_open(AppInfo().user_log_folder)
-        )
+        self.open_log_btn.clicked.connect(lambda: generic.platform_specific_open(AppInfo().user_log_folder))
 
         self.details_btn.clicked.connect(lambda: _toggle_details())
 
 
-def _setup_error_icon(
-    diag: QDialog, details_btn: QPushButton | None = None
-) -> QVBoxLayout:
+def _setup_error_icon(diag: QDialog, details_btn: QPushButton | None = None) -> QVBoxLayout:
     l_layout = QVBoxLayout()
     piximap = getattr(QStyle, "SP_MessageBoxCritical")
     icon = diag.style().standardIcon(piximap)
@@ -236,9 +226,7 @@ def show_fatal_error(
     :param details: text to pass to setDetailedText
     :param parent: The parent widget
     """
-    logger.info(
-        f"Showing fatal error box with input: [{title}], [{text}], [{information}], [{details}]"
-    )
+    logger.info(f"Showing fatal error box with input: [{title}], [{text}], [{information}], [{details}]")
 
     diag = FatalErrorDialog(title, text, information, details, parent=parent)
     diag.exec_()

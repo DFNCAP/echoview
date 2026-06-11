@@ -1,6 +1,8 @@
 import json
 import platform
+import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -8,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from imagehash import average_hash
+from loguru import logger
 from PIL import Image
 
 from app.devices.devices import ConnectionType, Device, StatusReporter
@@ -93,28 +96,34 @@ class iOSDevice(Device):
         output_file: Path,
         reporter: StatusReporter | None = None,
     ) -> None:
+        temp_dir = Path(tempfile.gettempdir())
+        temp_file = temp_dir / output_file.name
+        logger.debug(f"Writing output to {temp_file}")
         cmd = [
             _uxplay(),
             "-pin",
             "1234",
             "-mp4",
-            str(output_file).replace("\\", "/"),
+            str(temp_file).replace("\\", "/"),
             "-n",
             f"echoview-{self.identifier}",
             "-nh",
         ]
 
-        device_info = get_device_info(self.identifier)
-        mac_address = device_info.get("EthernetAddress", "")
-        if mac_address:
-            cmd.extend(["-allow", mac_address.upper(), "-restrict"])
+        # TODO: Fix device MAC restriction - iOS uses spoofed/random MAC addresses that get rotated
+        # device_info = get_device_info(self.identifier)
+        # allowed = [addr for key in ("EthernetAddress", "WiFiAddress") if (addr := device_info.get(key, "").upper())]
+        # for addr in allowed:
+        #     cmd.extend(["-allow", addr])
+        # if allowed:
+        #     cmd.append("-restrict")
+        # logger.debug(allowed)
 
         output_file.parent.mkdir(parents=True, exist_ok=True)
-        # self.recording_process = subprocess.Popen(cmd)
-
         self.recording_process = popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if self.recording_process.stdout and reporter:
             for line in self.recording_process.stdout:
+                logger.debug(line.strip())
                 if "An Open-Source AirPlay mirroring and audio-streaming server" in line:
                     reporter.status_changed.emit("Initialising UxPlay")
                 elif "Initialized server socket" in line:
@@ -123,9 +132,16 @@ class iOSDevice(Device):
                     reporter.status_changed.emit("UXPLAY_ENTER_PIN")
                 elif "Begin streaming to GStreamer video pipeline" in line:
                     reporter.status_changed.emit("Recording")
+                elif "Stopped recording" in line:
+                    self.recording_process.terminate()
 
-        # self.recording_process.wait()
-        # self.recording_process = None
+        logger.debug(f"Finalising {output_file.name}")
+        files = list(temp_dir.glob(f"{temp_file.name}*"))
+        logger.debug(f"Found files: {files}")
+        for file in files:
+            dest = output_file.parent / file.name
+            logger.debug(f"Moving {file} to {dest}")
+            shutil.move(str(file), str(dest))
 
     def stop_screen_recording(
         self,

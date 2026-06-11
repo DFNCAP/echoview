@@ -19,6 +19,7 @@ from app.views.message_box import BinaryChoiceDialog
 
 class DevicesView(QWidget):
     operation_requested = Signal(OperationType, Device)
+    combo_operation_requested = Signal(OperationType, Device, str)
     cancel_requested = Signal(Device)
     autoscroll_stop_requested = Signal(Device)
 
@@ -37,7 +38,7 @@ class DevicesView(QWidget):
 
         # Scanning indicator
         self._scanning_label = QLabel(" - Scanning")
-        self._scanning_label.setStyleSheet("color: #666;")
+        # self._scanning_label.setStyleSheet("color: #666;")
         self._spinner = QLabel("⟳")
         self._spinner.setStyleSheet("font-size: 14px;")
         self._spinner.hide()
@@ -111,6 +112,7 @@ class DevicesView(QWidget):
                 # New device - create widget
                 device_widget = DeviceWidget(device)
                 device_widget.operation_requested.connect(self.operation_requested.emit)
+                device_widget.combo_operation_requested.connect(self.combo_operation_requested.emit)
                 device_widget.autoscroll_stop_requested.connect(self.autoscroll_stop_requested.emit)
                 device_widget.cancel_requested.connect(self.cancel_requested)
                 self._devices_layout.addWidget(device_widget)
@@ -126,15 +128,30 @@ class DevicesView(QWidget):
         if device_id in self._device_widget_map:
             self._device_widget_map[device_id].set_busy(operation)
 
-    def set_device_autoscroll_finished(self, device_id: str) -> None:
-        """Signal that autoscroll has finished for a device."""
-        if device_id in self._device_widget_map:
-            self._device_widget_map[device_id].set_autoscroll_finished()
+    # def set_device_autoscroll_finished(self, device_id: str) -> None:
+    #     """Signal that autoscroll has finished for a device."""
+    #     if device_id in self._device_widget_map:
+    #         self._device_widget_map[device_id].set_autoscroll_finished()
 
-    def set_device_recording_finished(self, device_id: str) -> None:
-        """Signal that recording has finished while autoscroll may still be running."""
-        if device_id in self._device_widget_map:
-            self._device_widget_map[device_id].set_recording_finished()
+    # def set_device_recording_finished(self, device_id: str) -> None:
+    #     """Signal that recording has finished while autoscroll may still be running."""
+    #     if device_id in self._device_widget_map:
+    #         self._device_widget_map[device_id].set_recording_finished()
+
+    def get_widget(self, identifier: str) -> QWidget | None:
+        return self._device_widget_map.get(identifier)
+
+    @Slot(str, str)
+    def set_status(self, identifier: str, status: str) -> None:
+        widget = self._device_widget_map.get(identifier)
+        if widget:
+            widget.set_status(status)
+
+    @Slot(str, int, int)
+    def set_progress(self, identifier: str, current: int, total: int) -> None:
+        widget = self._device_widget_map.get(identifier)
+        if widget:
+            widget.set_progress(current, total)
 
     def show_operation_waring(self, title: str, message: str) -> None:
         show_warning(title, message)

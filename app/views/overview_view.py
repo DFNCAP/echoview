@@ -15,6 +15,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.utils.app_info import AppInfo
+from app.utils.generic import platform_specific_open
+
 LOGO = """
  _____     _           _   _ _               
 |  ___|   | |         | | | (_)              
@@ -47,6 +50,8 @@ class OverviewView(QWidget):
 
         layout.addStretch()
 
+        self._open_log_directory = self._create_open_log_dir_btn()
+        layout.addWidget(self._open_log_directory)
         self._device_scan_btn = self._create_device_scan_btn()
         layout.addWidget(self._device_scan_btn)
 
@@ -112,6 +117,13 @@ class OverviewView(QWidget):
     def _on_job_number_changed(self) -> None:
         self.job_number_changed.emit(self._job_number.text())
 
+    def _create_open_log_dir_btn(self) -> QPushButton:
+        btn = QPushButton("Open log directory")
+        btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        btn.clicked.connect(lambda: platform_specific_open(AppInfo().user_log_folder))
+
+        return btn
+
     def _create_device_scan_btn(self) -> QPushButton:
         btn = QPushButton("Scan for Devices")
         btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -120,5 +132,4 @@ class OverviewView(QWidget):
         return btn
 
     def _on_device_scan_pressed(self) -> None:
-        logger.info("Requesting device scan from view")
         self.device_scan_requested.emit()

@@ -40,7 +40,6 @@ class OverviewModel(QObject):
     def output_directory(self, directory: Path) -> None:
         """Set the output directory and emit a change signal if modified."""
         if self._output_directory != directory:
-            logger.info(f"Output directory changed to {directory}")
             self._output_directory = directory
 
     @property

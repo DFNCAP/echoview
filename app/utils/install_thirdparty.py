@@ -27,7 +27,7 @@ def unpack_scrcpy() -> bool:
 
     # Check if required files already exist
     if all((source_dir / f).exists() for f in required_files):
-        logger.info(f"scrcpy already extracted at {source_dir}")
+        logger.debug(f"scrcpy already extracted at {source_dir}")
         return True
 
     archives = list(source_dir.glob(archive_pattern))
@@ -58,7 +58,7 @@ def unpack_goios() -> bool:
         return False
 
     if all((source_dir / f).exists() for f in required_files):
-        logger.info(f"go-ios already extracted at {source_dir}")
+        logger.debug(f"go-ios already extracted at {source_dir}")
         return True
 
     archives = list(source_dir.glob(archive_pattern))
@@ -81,7 +81,7 @@ def unpack_wintun() -> bool:
     destination = AppInfo().application_folder / "go-ios" / "wintun.dll"
 
     if destination.exists():
-        logger.info(f"wintun already extracted at {destination}")
+        logger.debug(f"wintun already extracted at {destination}")
         return True
 
     source_dir = AppInfo().application_folder / "wintun"
@@ -116,7 +116,7 @@ def unpack_uxplay() -> bool:
 
     # Check if required files already exist
     if all((source_dir / "bin" / f).exists() for f in required_files):
-        logger.info(f"uxplay already extracted at {source_dir}")
+        logger.debug(f"uxplay already extracted at {source_dir}")
         return True
 
     archives = list(source_dir.glob(archive_pattern))
@@ -133,7 +133,6 @@ def unpack_uxplay() -> bool:
 
 def install_bonjour() -> bool:
     if is_installed("Bonjour"):
-        logger.info("Bonjour already installed")
         return True
 
     msi_path = AppInfo().application_folder / "apple" / "Bonjour64.msi"
@@ -142,7 +141,6 @@ def install_bonjour() -> bool:
 
 def install_AppleMobileDeviceSupport() -> bool:
     if is_installed("Apple Mobile Device Support"):
-        logger.info("Apple Mobile Device Support already installed")
         return True
 
     msi_path = AppInfo().application_folder / "apple" / "AppleMobileDeviceSupport64.msi"
@@ -165,6 +163,7 @@ def is_installed(name: str) -> bool:
                         with winreg.OpenKey(key, subkey_name) as subkey:
                             display_name, _ = winreg.QueryValueEx(subkey, "DisplayName")
                             if name.lower() in display_name.lower():
+                                logger.debug(f"{name} is already installed")
                                 return True
                     except OSError:
                         continue
@@ -175,19 +174,21 @@ def is_installed(name: str) -> bool:
 
 def install_msi(msi_path: Path) -> bool:
     try:
-        subprocess.run(
-            ["msiexec", "/i", msi_path, "/passive", "/norestart"], check=True
-        )
+        logger.debug(f"Installing {msi_path}")
+        subprocess.run(["msiexec", "/i", msi_path, "/passive", "/norestart"], check=True)
     except subprocess.CalledProcessError as e:
         if e.returncode == 5:  # Access denied
             return _elevate_and_install(msi_path)
         else:
+            logger.error(f"Failed to install {msi_path}")
             return False
     return True
 
 
 def _elevate_and_install(msi_path: Path) -> bool:
     import ctypes
+
+    logger.debug(f"Installing {msi_path} with elevated privileges")
 
     result = ctypes.windll.shell32.ShellExecuteW(
         None,  # parent window handle

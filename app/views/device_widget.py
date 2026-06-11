@@ -1,6 +1,7 @@
 from loguru import logger
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QComboBox,
     QGridLayout,
     QHBoxLayout,
@@ -20,6 +21,7 @@ class DeviceWidget(QWidget):
     """Widget for displaying a single device with screenshot button."""
 
     operation_requested = Signal(OperationType, Device)
+    combo_operation_requested = Signal(OperationType, Device, str)
     cancel_requested = Signal(Device)
     autoscroll_stop_requested = Signal(Device)
 
@@ -27,17 +29,21 @@ class DeviceWidget(QWidget):
         super().__init__()
 
         self._device = device
-        self._status = "Idle"
+        self._status = ""
         self._autoscroll_active = False
         self._recording_active = False
         self._autoscroll_screenshot_active = False
+        self._persistent_status: str = ""
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(1)
 
-        self._heading_label = self._make_heading(layout)
+        # self._heading_label, self._status_label = self._make_heading_row(layout)
 
+        self._heading_label = self._make_title_label(layout)
+
+        self._details_label = self._make_details_label(layout)
         self._status_label = self._make_status_label(layout)
 
         self._warning_label = self._make_warning_label(layout)
@@ -54,24 +60,24 @@ class DeviceWidget(QWidget):
         self._action_rows.append(
             self._make_action_row(layout, "Start Screen Recording", OperationType.SCREEN_RECORDING)
         )
-
-        self._combo_rows: list[tuple[QPushButton, QComboBox]] = []
-        self._autoscroll_row = self._make_combo_row(
-            layout, "Start Autoscroll", ["up", "down", "left", "right"], OperationType.AUTOSCROLL
-        )
-        self._autoscroll_btn, self._autoscroll_combo = self._autoscroll_row
-        self._combo_rows.append(self._autoscroll_row)
-
         self._action_rows.append(self._make_action_row(layout, "Take Screenshot", OperationType.SCREENSHOT))
 
-        self._autoscroll_screenshot_row = self._make_combo_row(
+        self._combo_rows: list[tuple[QPushButton, QComboBox]] = []
+
+        autoscroll_row = self._make_combo_row(
+            layout, "Start Autoscroll", ["up", "down", "left", "right"], OperationType.AUTOSCROLL
+        )
+        self._autoscroll_btn, self._autoscroll_combo = autoscroll_row
+        self._combo_rows.append(autoscroll_row)
+
+        autoscroll_screenshot_row = self._make_combo_row(
             layout,
             "Start Autoscroll Screenshot",
             ["up", "down", "left", "right"],
             OperationType.AUTOSCROLL_SCREENSHOT,
         )
-        self._autoscroll_screenshot_btn, self._autoscroll_screenshot_combo = self._autoscroll_screenshot_row
-        self._combo_rows.append(self._autoscroll_screenshot_row)
+        self._autoscroll_screenshot_btn, self._autoscroll_screenshot_combo = autoscroll_screenshot_row
+        self._combo_rows.append(autoscroll_screenshot_row)
 
         self._cancel_btn = self._make_cancel_btn(layout)
 
@@ -84,7 +90,20 @@ class DeviceWidget(QWidget):
     # ------------------------------------------------------------------ #
     # Setup
     # ------------------------------------------------------------------ #
-    def _make_heading(self, layout: QVBoxLayout) -> QLabel:
+    def _make_heading_row(self, layout: QVBoxLayout) -> tuple[QLabel, QLabel]:
+        widget = QWidget()
+        # widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        sublayout = QHBoxLayout()
+        sublayout.setContentsMargins(0, 0, 0, 0)
+        sublayout.setSpacing(1)
+        heading_label = self._make_title_label(sublayout)
+        status_label = self._make_status_label(sublayout)
+        widget.setLayout(sublayout)
+        layout.addWidget(widget)
+
+        return heading_label, status_label
+
+    def _make_title_label(self, layout: QBoxLayout) -> QLabel:
         label = QLabel(self._device.device_name or self._device.identifier)
         font = label.font()
         font.setPointSize(18)
@@ -96,12 +115,22 @@ class DeviceWidget(QWidget):
         # label.setStyleSheet("background: red")
         return label
 
-    def _make_status_label(self, layout: QVBoxLayout) -> QLabel:
-        label = QLabel(self._generate_status_label())
+    def _make_status_label(self, layout: QBoxLayout) -> QLabel:
+        label = QLabel(self._status)
+        # label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        font = label.font()
+        font.setPointSize(12)
+        # font.setBold(True)
+        label.setFont(font)
         label.setFixedHeight(label.fontMetrics().height())
         layout.addWidget(label)
 
-        # label.setStyleSheet("background: green")
+        return label
+
+    def _make_details_label(self, layout: QVBoxLayout) -> QLabel:
+        label = QLabel(self._generate_details_label())
+        label.setFixedHeight(label.fontMetrics().height())
+        layout.addWidget(label)
         return label
 
     def _make_warning_label(self, layout: QVBoxLayout) -> QLabel:
@@ -112,8 +141,6 @@ class DeviceWidget(QWidget):
 
         if self._device.connection_type == ConnectionType.FULL:
             label.hide()
-
-        # label.setStyleSheet("background: blue")
         return label
 
     def _make_action_row(
@@ -122,43 +149,38 @@ class DeviceWidget(QWidget):
         btn = QPushButton(label)
         bar = QProgressBar(minimum=0, maximum=0)
         bar.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        btn.clicked.connect(lambda: self._on_action_row_clicked(label, btn, bar, operation))
+        btn.clicked.connect(lambda: self._on_action_row_clicked(btn, bar, operation))
         bar.hide()
         layout.addWidget(btn)
         layout.addWidget(bar)
-
-        # btn.setStyleSheet("background: red;")
-
         return (btn, bar)
 
     def _make_operation_grid(self, layout: QVBoxLayout) -> list[tuple[QPushButton, QProgressBar]]:
         grid = QGridLayout()
         action_rows: list[tuple[QPushButton, QProgressBar]] = []
-        cell, btn, bar = self._make_operation_cell("Backup", OperationType.BACKUP)
+
+        cell = QVBoxLayout()
+        btn, bar = self._make_action_row(cell, "Backup", OperationType.BACKUP)
         grid.addLayout(cell, 0, 0)
         action_rows.append((btn, bar))
 
-        cell, btn, bar = self._make_operation_cell("Extract Contacts", OperationType.EXTRACT_CONTACTS)
+        cell = QVBoxLayout()
+        btn, bar = self._make_action_row(cell, "Extract Contacts", OperationType.EXTRACT_CONTACTS)
         grid.addLayout(cell, 0, 1)
         action_rows.append((btn, bar))
 
-        cell, btn, bar = self._make_operation_cell("Extract Device Info", OperationType.EXTRACT_DEVICE_INFO)
+        cell = QVBoxLayout()
+        btn, bar = self._make_action_row(cell, "Extract Device Info", OperationType.EXTRACT_DEVICE_INFO)
         grid.addLayout(cell, 1, 0)
         action_rows.append((btn, bar))
 
-        cell, btn, bar = self._make_operation_cell("Extract Device Logs", OperationType.EXTRACT_DEVICE_LOGS)
+        cell = QVBoxLayout()
+        btn, bar = self._make_action_row(cell, "Extract Device Logs", OperationType.EXTRACT_DEVICE_LOGS)
         grid.addLayout(cell, 1, 1)
         action_rows.append((btn, bar))
 
         layout.addLayout(grid)
         return action_rows
-
-    def _make_operation_cell(
-        self, label: str, operation: OperationType
-    ) -> tuple[QVBoxLayout, QPushButton, QProgressBar]:
-        cell = QVBoxLayout()
-        btn, bar = self._make_action_row(cell, label, operation)
-        return cell, btn, bar
 
     def _make_combo_row(
         self, layout: QVBoxLayout, btn_label: str, combo_labels: list[str], operation: OperationType
@@ -171,7 +193,7 @@ class DeviceWidget(QWidget):
         btn = QPushButton(btn_label)
         combo = QComboBox()
         combo.addItems(combo_labels)
-        btn.clicked.connect(lambda: self._on_combo_row_clicked(combo.currentText(), operation))
+        btn.clicked.connect(lambda: self._on_combo_row_clicked(btn, combo, operation))
 
         sublayout.addWidget(btn)
         sublayout.addWidget(combo)
@@ -198,6 +220,7 @@ class DeviceWidget(QWidget):
         for btn, bar in self._action_rows:
             btn.show()
             bar.hide()
+            bar.setRange(0, 0)
 
             if self._device.connection_type == ConnectionType.NONE or (
                 self._device.connection_type == ConnectionType.PARTIAL and "Screenshot" in btn.text()
@@ -220,66 +243,116 @@ class DeviceWidget(QWidget):
     # Public
     # ------------------------------------------------------------------ #
     def set_busy(self, operation: OperationType) -> None:
-        if operation == OperationType.IDLE:
-            self._autoscroll_active = False
-            self._recording_active = False
-            self._autoscroll_btn.setText("Start Autoscroll")
-            self._status = "Idle"
-            self._status_label.setText(self._generate_status_label())
-            self._apply_busy_state()
-            return
+        match operation:
+            case OperationType.IDLE:
+                if self._autoscroll_active or self._recording_active or self._autoscroll_screenshot_active:
+                    self._restore_action_rows()
+                    self.set_status(self._persistent_status)
+                    self._apply_busy_state()
+                else:
+                    self._apply_idle_state()
+                return
 
-        if operation == OperationType.SCREEN_RECORDING:
-            self._recording_active = True
+            case OperationType.AUTOSCROLL:
+                self._autoscroll_btn.setText("Stop Autoscroll")
+                self._autoscroll_btn.clicked.disconnect()
+                self._autoscroll_btn.clicked.connect(
+                    lambda: self._on_combo_row_clicked(
+                        self._autoscroll_btn, self._autoscroll_combo, OperationType.STOP_AUTOSCROLL
+                    )
+                )
+                self._autoscroll_active = True
+                if not self._recording_active:
+                    self._persistent_status = self._status
+                self._apply_busy_state()
+                return
 
-        if self._autoscroll_active or self._recording_active:
-            # Concurrent autoscroll/recording: derive state from flags
-            self._apply_busy_state()
-            return
+            case OperationType.STOP_AUTOSCROLL:
+                self._reset_autoscroll()
+                if self._recording_active:
+                    self.set_status(self._persistent_status)
+                else:
+                    self._persistent_status = ""
+                    self.set_status("")
+                self._apply_busy_state()
+                return
 
-        # Generic operation (screenshot, backup, etc.) with no concurrent special operations.
-        # Disable all buttons without touching bar/button visibility set by _on_action_row_clicked.
+            case OperationType.SCREEN_RECORDING:
+                self._recording_active = True
+                self._persistent_status = self._status
+                self._apply_busy_state()
+                return
+
+            case OperationType.STOP_SCREEN_RECORDING:
+                self._persistent_status = ""
+                self.set_status("")
+                self._recording_active = False
+                self._restore_action_rows()
+                self._apply_busy_state()
+                return
+
+            case OperationType.AUTOSCROLL_SCREENSHOT:
+                self._autoscroll_screenshot_btn.setText("Stop Autoscroll Screenshot")
+                self._autoscroll_screenshot_btn.clicked.disconnect()
+                self._autoscroll_screenshot_btn.clicked.connect(
+                    lambda: self._on_combo_row_clicked(
+                        self._autoscroll_screenshot_btn,
+                        self._autoscroll_screenshot_combo,
+                        OperationType.STOP_AUTOSCROLL_SCREENSHOT,
+                    )
+                )
+                self._autoscroll_screenshot_active = True
+                self._persistent_status = self._status
+                self._apply_busy_state()
+                return
+
+            case OperationType.STOP_AUTOSCROLL_SCREENSHOT:
+                self._persistent_status = ""
+                self.set_status("")
+                self._reset_autoscroll_screenshot()
+                self._apply_busy_state()
+                return
+
+        # Generic operation (backup, screenshot, etc.): disable everything and show cancel.
         for btn, bar in self._action_rows:
             btn.setDisabled(True)
         for btn, combo in self._combo_rows:
             btn.setDisabled(True)
             combo.setDisabled(True)
-        if operation != OperationType.ENABLE_DEV_MODE:
+        if operation != OperationType.ENABLE_DEV_MODE or self._device.os == "iOS":
             self._cancel_btn.show()
             self._cancel_btn.setEnabled(True)
 
     def _apply_busy_state(self) -> None:
-        """Derive all button states from _autoscroll_active and _recording_active."""
-        if not self._autoscroll_active and not self._recording_active:
+        """Derive all button states from the active special-operation flags."""
+        if not self._autoscroll_active and not self._recording_active and not self._autoscroll_screenshot_active:
             self._reset_btn_states()
             self._cancel_btn.hide()
             self._cancel_btn.setDisabled(True)
             return
 
+        autoscroll_only = self._autoscroll_active and not self._recording_active and not self._autoscroll_screenshot_active
+
         for btn, bar in self._action_rows:
-            if not self._recording_active:
-                # Autoscroll only: keep screen recording and screenshot available
-                is_screenshot = "Screenshot" in btn.text()
-                is_recording_btn = btn.text() == "Start Screen Recording"
-                if is_screenshot or is_recording_btn:
-                    if self._device.connection_type == ConnectionType.NONE or (
-                        self._device.connection_type == ConnectionType.PARTIAL and is_screenshot
-                    ):
-                        btn.setDisabled(True)
-                    else:
-                        btn.setEnabled(True)
-                    continue
-            btn.setDisabled(True)
+            is_screenshot = "Screenshot" in btn.text()
+            is_recording_btn = btn.text() == "Start Screen Recording"
+            connection_allows = self._device.connection_type != ConnectionType.NONE and not (
+                self._device.connection_type == ConnectionType.PARTIAL and is_screenshot
+            )
+            btn.setEnabled(autoscroll_only and (is_screenshot or is_recording_btn) and connection_allows)
 
         for btn, combo in self._combo_rows:
             if btn is self._autoscroll_btn:
-                btn.setEnabled(True)
-                combo.setEnabled(not self._autoscroll_active)
+                btn.setEnabled(not self._autoscroll_screenshot_active)
+                combo.setEnabled(not self._autoscroll_active and not self._autoscroll_screenshot_active)
+            elif btn is self._autoscroll_screenshot_btn:
+                btn.setEnabled(self._autoscroll_screenshot_active)
+                combo.setDisabled(True)
             else:
                 btn.setDisabled(True)
                 combo.setDisabled(True)
 
-        if self._recording_active:
+        if self._recording_active and self._device.os != "iOS":
             self._cancel_btn.show()
             self._cancel_btn.setEnabled(True)
         else:
@@ -292,7 +365,7 @@ class DeviceWidget(QWidget):
             show_warning("Enter Pin", "Enter pin '1234' on the device to continue")
             return
         self._status = status
-        self._status_label.setText(self._generate_status_label())
+        self._status_label.setText(status)
 
     @Slot(int, int)
     def set_progress(self, current: int, total: int) -> None:
@@ -305,9 +378,8 @@ class DeviceWidget(QWidget):
 
     def update_widget(self, device: Device) -> None:
         self._device = device
-        logger.info(f"Name: {device.device_name}, ID: {device.identifier}")
         self._heading_label.setText(self._device.device_name or self._device.identifier)
-        self._status_label.setText(self._generate_status_label())
+        self._details_label.setText(self._generate_details_label())
 
         full_connection = self._device.connection_type == ConnectionType.FULL
         partial_connection = self._device.connection_type == ConnectionType.PARTIAL
@@ -334,7 +406,42 @@ class DeviceWidget(QWidget):
     # ------------------------------------------------------------------ #
     # Helpers
     # ------------------------------------------------------------------ #
-    def _generate_status_label(self) -> str:
+    def _restore_action_rows(self) -> None:
+        for btn, bar in self._action_rows:
+            btn.show()
+            bar.hide()
+            bar.setRange(0, 0)
+
+    def _apply_idle_state(self) -> None:
+        self._persistent_status = ""
+        self.set_status("")
+        self._recording_action = False
+        self._reset_autoscroll()
+        self._reset_autoscroll_screenshot()
+        self._reset_btn_states()
+        self._cancel_btn.hide()
+
+    def _reset_autoscroll(self) -> None:
+        self._autoscroll_active = False
+        self._autoscroll_btn.setText("Start Autoscroll")
+        self._autoscroll_btn.clicked.disconnect()
+        self._autoscroll_btn.clicked.connect(
+            lambda: self._on_combo_row_clicked(self._autoscroll_btn, self._autoscroll_combo, OperationType.AUTOSCROLL)
+        )
+        self._autoscroll_combo.setEnabled(True)
+
+    def _reset_autoscroll_screenshot(self) -> None:
+        self._autoscroll_screenshot_active = False
+        self._autoscroll_screenshot_btn.setText("Start Autoscroll Screenshot")
+        self._autoscroll_screenshot_btn.clicked.disconnect()
+        self._autoscroll_screenshot_btn.clicked.connect(
+            lambda: self._on_combo_row_clicked(
+                self._autoscroll_screenshot_btn, self._autoscroll_screenshot_combo, OperationType.AUTOSCROLL_SCREENSHOT
+            )
+        )
+        self._autoscroll_screenshot_combo.setEnabled(True)
+
+    def _generate_details_label(self) -> str:
         parts = []
         if self._device.serial:
             parts.append(f"Serial: {self._device.serial}")
@@ -354,13 +461,10 @@ class DeviceWidget(QWidget):
         # if d.width and d.height:
         #     parts.append(f"Dimensions: {d.width}x{d.height}")
 
-        parts.append(f"Status: {self._status}")
         return " | ".join(parts)
 
-    def _on_action_row_clicked(self, label: str, btn: QPushButton, bar: QProgressBar, operation: OperationType) -> None:
-        logger.info(f"Pressed {label} with action {operation.name}")
-        self._status = label
-        self._status_label.setText(self._generate_status_label())
+    def _on_action_row_clicked(self, btn: QPushButton, bar: QProgressBar, operation: OperationType) -> None:
+        logger.debug(f"Pressed {btn.text()} with action {operation.name}")
         btn.hide()
         bar.setValue(0)
         bar.show()
@@ -368,56 +472,13 @@ class DeviceWidget(QWidget):
 
     def _on_combo_row_clicked(
         self,
-        selection: str,
+        btn: QPushButton,
+        combo: QComboBox,
         operation: OperationType,
     ) -> None:
-        logger.info(f"Pressed {selection}")
-        if operation == OperationType.AUTOSCROLL:
-            if self._autoscroll_active:
-                # Stop autoscroll
-                self._on_autoscroll_stop_requested()
-            else:
-                # Start autoscroll - set active state immediately for UI feedback
-                self._autoscroll_active = True
-                self._autoscroll_btn.setText("Stop Autoscroll")
-                self._autoscroll_combo.setEnabled(False)
-                match selection:
-                    case "up":
-                        self.operation_requested.emit(OperationType.AUTOSCROLL_UP, self._device)
-                    case "down":
-                        self.operation_requested.emit(OperationType.AUTOSCROLL_DOWN, self._device)
-                    case "left":
-                        self.operation_requested.emit(OperationType.AUTOSCROLL_LEFT, self._device)
-                    case "right":
-                        self.operation_requested.emit(OperationType.AUTOSCROLL_RIGHT, self._device)
-        elif operation == OperationType.AUTOSCROLL_SCREENSHOT:
-            match selection:
-                case "up":
-                    self.operation_requested.emit(OperationType.AUTOSCROLL_SCREENSHOT_UP, self._device)
-                case "down":
-                    self.operation_requested.emit(OperationType.AUTOSCROLL_SCREENSHOT_DOWN, self._device)
-                case "left":
-                    self.operation_requested.emit(OperationType.AUTOSCROLL_SCREENSHOT_LEFT, self._device)
-                case "right":
-                    self.operation_requested.emit(OperationType.AUTOSCROLL_SCREENSHOT_RIGHT, self._device)
-
-    def _on_autoscroll_stop_requested(self) -> None:
-        """Handle stopping autoscroll."""
-        self._autoscroll_active = False
-        self._autoscroll_btn.setText("Start Autoscroll")
-        self.autoscroll_stop_requested.emit(self._device)
-        self._apply_busy_state()
-
-    def set_autoscroll_finished(self) -> None:
-        """Called when autoscroll operation has finished (not via stop button)."""
-        self._autoscroll_active = False
-        self._autoscroll_btn.setText("Start Autoscroll")
-        self._apply_busy_state()
-
-    def set_recording_finished(self) -> None:
-        """Called when recording has finished while autoscroll may still be running."""
-        self._recording_active = False
-        self._apply_busy_state()
+        logger.debug(f"Pressed {btn.text()} with action {operation.name} and selection {combo.currentText()}")
+        combo.setDisabled(True) if combo.isEnabled() else combo.setEnabled(True)
+        self.combo_operation_requested.emit(operation, self._device, combo.currentText())
 
     def _get_warning_text(self) -> str:
         if self._device.os == "Android":

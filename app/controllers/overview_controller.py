@@ -27,7 +27,6 @@ class OverviewController(QObject):
 
     @Slot(Path)
     def _on_output_directory_changed(self, directory: Path) -> None:
-        logger.info(f"Output directory changed to {directory}")
         self._model.output_directory = directory
         self.output_directory_changed.emit(self._model.output_directory)
 
@@ -38,5 +37,4 @@ class OverviewController(QObject):
 
     @Slot()
     def _on_device_scan_requested(self) -> None:
-        logger.info("Requesting device scan from controller")
         self.device_scan_requested.emit()

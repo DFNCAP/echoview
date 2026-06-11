@@ -116,7 +116,7 @@ def main_thread() -> None:
         if app_controller:
             app_controller.quit()
     except SystemExit:
-        logger.warning("Exiting application")
+        pass
     except Exception as e:
         # Catch exceptions during initial application instantiation
         # Uncaught exceptions during the application loop are caught with excepthook

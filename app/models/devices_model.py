@@ -32,7 +32,6 @@ class DevicesModel(QObject):
     @output_directory.setter
     def output_directory(self, directory: Path) -> None:
         if self._output_directory != directory:
-            logger.info(f"Output directory changed to {directory}")
             self._output_directory = directory
 
     @property

@@ -66,6 +66,7 @@ class DevicesController(QObject):
         self._go_ios_tunnel_proc: subprocess.Popen[bytes] | None = ios.start_ios_tunnel()
 
         self._view.operation_requested.connect(self._on_operation_requested)
+        self._view.combo_operation_requested.connect(self._combo_operation_requested)
 
         self._view.cancel_requested.connect(self._on_cancel_requested)
         self._view.autoscroll_stop_requested.connect(self._on_autoscroll_stop_requested)
@@ -109,72 +110,53 @@ class DevicesController(QObject):
 
     @Slot(str, int)
     def _on_operation_started(self, device_id: str, operation_type: OperationType) -> None:
-        logger.info(f"Started operation {operation_type.name} for device {device_id}")
+        logger.debug(f"Started operation {operation_type.name} for device {device_id}")
         # Show scanning indicator for device scan
         if operation_type == OperationType.DEVICE_SCAN:
             self._view.set_scanning(True)
+            return
 
         # Track this operation for the device
-        if device_id not in self._device_operations:
-            self._device_operations[device_id] = set()
-        self._device_operations[device_id].add(operation_type)
+        # if device_id not in self._device_operations:
+        #     self._device_operations[device_id] = set()
+        # self._device_operations[device_id].add(operation_type)
 
         self._view.set_device_busy(device_id, operation_type)
 
     @Slot(str, str, object)
     def _on_operation_finished(self, device_id: str, operation_type: OperationType, result: object) -> None:
-        logger.info(f"Finished operation {operation_type.name} for device {device_id}")
+        logger.debug(f"Finished operation {operation_type.name} for device {device_id}")
 
-        # Remove this operation from tracking
-        if device_id in self._device_operations:
-            self._device_operations[device_id].discard(operation_type)
-
-        # Special signal for autoscroll finishing (to coordinate with screen recording)
-        if operation_type == OperationType.AUTOSCROLL:
-            self._view.set_device_autoscroll_finished(device_id)
-            if OperationType.SCREEN_RECORDING not in self._device_operations.get(device_id, set()):
-                self._view.set_device_busy(device_id, OperationType.IDLE)
-        elif operation_type == OperationType.SCREEN_RECORDING:
-            has_autoscroll = OperationType.AUTOSCROLL in self._device_operations.get(device_id, set())
-            if has_autoscroll:
-                self._view.set_device_recording_finished(device_id)
-            else:
-                self._view.set_device_busy(device_id, OperationType.IDLE)
-        elif operation_type == OperationType.DEVICE_SCAN:
+        if operation_type == OperationType.DEVICE_SCAN:
             self._view.set_scanning(False)
             devices = result if isinstance(result, list) else []
-            logger.info(f"DevicesController received {len(devices)} devices from scan")
             self._model.devices = devices
-        else:
-            self._view.set_device_busy(device_id, OperationType.IDLE)
+            return
 
         if operation_type == OperationType.ENABLE_DEV_MODE:
             self.start_scan()
+            return
+
+        if operation_type == OperationType.AUTOSCROLL:
+            self._view.set_device_busy(device_id, OperationType.STOP_AUTOSCROLL)
+            return
+
+        if operation_type == OperationType.SCREEN_RECORDING:
+            self._view.set_device_busy(device_id, OperationType.STOP_SCREEN_RECORDING)
+            return
+
+        if operation_type == OperationType.AUTOSCROLL_SCREENSHOT:
+            self._view.set_device_busy(device_id, OperationType.STOP_AUTOSCROLL_SCREENSHOT)
+            return
+
+        self._view.set_device_busy(device_id, OperationType.IDLE)
+
 
     @Slot(str, str, str)
     def _on_operation_failed(self, device_id: str, operation_type: OperationType, error: str) -> None:
         logger.warning(f"Error during operation {operation_type.name} for device {device_id}")
 
-        # Remove this operation from tracking
-        if device_id in self._device_operations:
-            self._device_operations[device_id].discard(operation_type)
-
-        # Hide scanning indicator if device scan fails
-        if operation_type == OperationType.DEVICE_SCAN:
-            self._view.set_scanning(False)
-        elif operation_type == OperationType.AUTOSCROLL:
-            self._view.set_device_autoscroll_finished(device_id)
-            if OperationType.SCREEN_RECORDING not in self._device_operations.get(device_id, set()):
-                self._view.set_device_busy(device_id, OperationType.IDLE)
-        elif operation_type == OperationType.SCREEN_RECORDING:
-            has_autoscroll = OperationType.AUTOSCROLL in self._device_operations.get(device_id, set())
-            if has_autoscroll:
-                self._view.set_device_recording_finished(device_id)
-            else:
-                self._view.set_device_busy(device_id, OperationType.IDLE)
-        else:
-            self._view.set_device_busy(device_id, OperationType.IDLE)
-
+        self._view.set_device_busy(device_id, OperationType.IDLE)
         self._view.show_operation_waring(f"{operation_type.name} failed", error)
 
     @Slot(OperationType, Device)
@@ -192,26 +174,23 @@ class DevicesController(QObject):
                 self._on_device_logs_extraction_requested(device)
             case OperationType.SCREEN_RECORDING:
                 self._on_screen_recording_requested(device)
-            case OperationType.AUTOSCROLL_UP:
-                self._on_autoscroll_requested(device, "up")
-            case OperationType.AUTOSCROLL_DOWN:
-                self._on_autoscroll_requested(device, "down")
-            case OperationType.AUTOSCROLL_LEFT:
-                self._on_autoscroll_requested(device, "left")
-            case OperationType.AUTOSCROLL_RIGHT:
-                self._on_autoscroll_requested(device, "right")
-            case OperationType.AUTOSCROLL_SCREENSHOT_UP:
-                self._on_autoscroll_screenshot_requested(device, "up")
-            case OperationType.AUTOSCROLL_SCREENSHOT_DOWN:
-                self._on_autoscroll_screenshot_requested(device, "down")
-            case OperationType.AUTOSCROLL_SCREENSHOT_LEFT:
-                self._on_autoscroll_screenshot_requested(device, "left")
-            case OperationType.AUTOSCROLL_SCREENSHOT_RIGHT:
-                self._on_autoscroll_screenshot_requested(device, "right")
             case OperationType.SCREENSHOT:
                 self._on_screenshot_requested(device)
 
-    @Slot(Device)
+    @Slot(OperationType, Device, str)
+    def _combo_operation_requested(self, operation: OperationType, device: Device, selection: str) -> None:
+        match operation:
+            case OperationType.AUTOSCROLL:
+                self._on_autoscroll_requested(device, selection)
+            case OperationType.STOP_AUTOSCROLL:
+                if device.identifier in self._autoscroll_events:
+                    self._autoscroll_events[device.identifier].set()
+            case OperationType.STOP_AUTOSCROLL_SCREENSHOT:
+                if device.identifier in self._autoscroll_events:
+                    self._autoscroll_events[device.identifier].set()
+            case OperationType.AUTOSCROLL_SCREENSHOT:
+                self._on_autoscroll_screenshot_requested(device, selection)
+
     def _on_backup_requested(self, device: Device) -> None:
         """Take a backup of the specified device."""
         logger.debug(f"Taking backup of {device.os} device: {device.identifier}")
@@ -221,12 +200,9 @@ class DevicesController(QObject):
             / "backups"
             / f"backup_{get_timestamp()}"
         )
-
         reporter = StatusReporter()
-        widget = self._view._device_widget_map.get(device.identifier)
-        if widget:
-            reporter.status_changed.connect(widget.set_status)
-            reporter.progress_changed.connect(widget.set_progress)
+        reporter.status_changed.connect(self._view.set_status)
+        reporter.progress_changed.connect(self._view.set_progress)
 
         if device.identifier not in self._cancel_events:
             self._cancel_events[device.identifier] = threading.Event()
@@ -238,13 +214,14 @@ class DevicesController(QObject):
 
         self._runner.submit(device.identifier, OperationType.BACKUP, backup_operation)
 
-    @Slot(Device)
     def _on_contacts_extraction_requested(self, device: Device) -> None:
         output_file = (
             self._model.output_directory
             / (self._model.job_number or device.identifier)
             / f"contacts_{get_timestamp()}.txt"
         )
+
+        self._view.set_status(device.identifier, "Extracting contacts")
 
         def extract_contacts_operation() -> Path:
             return device.extract_contacts(output_file.resolve())
@@ -264,10 +241,8 @@ class DevicesController(QObject):
         )
 
         reporter = StatusReporter()
-        widget = self._view._device_widget_map.get(device.identifier)
-        if widget:
-            reporter.status_changed.connect(widget.set_status)
-            reporter.progress_changed.connect(widget.set_progress)
+        reporter.status_changed.connect(self._view.set_status)
+        reporter.progress_changed.connect(self._view.set_progress)
 
         if device.identifier not in self._cancel_events:
             self._cancel_events[device.identifier] = threading.Event()
@@ -290,9 +265,12 @@ class DevicesController(QObject):
             / (self._model.job_number or device.identifier)
             / f"device_info_{get_timestamp()}.txt"
         )
+        reporter = StatusReporter()
+        reporter.status_changed.connect(self._view.set_status)
+        reporter.progress_changed.connect(self._view.set_progress)
 
         def extract_device_info_operation() -> None:
-            return device.extract_device_info(output_directory.resolve())
+            return device.extract_device_info(output_directory.resolve(), reporter)
 
         self._runner.submit(
             device.identifier,
@@ -302,18 +280,16 @@ class DevicesController(QObject):
 
     @Slot(Device)
     def _on_screen_recording_requested(self, device: Device) -> None:
-        output_file = (
-            self._model.output_directory
-            / (self._model.job_number or device.identifier)
-            / "recordings"
-            / f"recording_{get_timestamp()}.mp4"
-        )
-        reporter = None
+        output_file = self._model.output_directory / (self._model.job_number or device.identifier) / "recordings"
+
         if device.os == "iOS":
-            reporter = StatusReporter()
-            widget = self._view._device_widget_map.get(device.identifier)
-            if widget and reporter:
-                reporter.status_changed.connect(widget.set_status)
+            # UxPlay controls file suffixes
+            output_file /= f"recording_{get_timestamp()}"
+        else:
+            output_file /= f"recording_{get_timestamp()}.mp4"
+
+        reporter = StatusReporter()
+        reporter.status_changed.connect(self._view.set_status)
 
         def screen_recording_operation() -> None:
             return device.start_screen_recording(output_file.resolve(), reporter)
@@ -327,6 +303,13 @@ class DevicesController(QObject):
     @Slot(Device)
     def _on_screenshot_requested(self, device: Device) -> None:
         """Take a screenshot of the specified device."""
+        self._view.set_status(device.identifier, "Taking screenshot")
+
+        needs_dev_image = self._ios_needs_dev_image(device)
+
+        if needs_dev_image and not self._confirm_mount_dev_image():
+            self._view.set_device_busy(device.identifier, OperationType.IDLE)
+            return
 
         output_file = (
             self._model.output_directory
@@ -335,39 +318,31 @@ class DevicesController(QObject):
             / f"screenshot_{get_timestamp()}.png"
         )
 
-        if (
+        def screenshot_operation() -> Path:
+            if needs_dev_image:
+                ios.mount_dev_image(device.identifier)
+            return device.screenshot(output_file.resolve())
+
+        self._runner.submit(device.identifier, OperationType.SCREENSHOT, screenshot_operation)
+
+    def _ios_needs_dev_image(self, device: Device) -> bool:
+        return (
             device.os == "iOS"
             and not ios.dev_image_mounted(device.identifier)
             and ios.major_version(device.os_version) < 17
-        ):
+        )
 
-            def screenshot_operation() -> Path:
-                ios.mount_dev_image(device.identifier)
-                return device.screenshot(output_file.resolve())
-
-            if self._view.show_binary_choice(
-                title="Mount Developer Image",
-                text="Mount Developer Image",
-                information="iOS 16 devices require a developer image to be mounted before taking a screenshot. Proceed?",
-            ):
-                self._runner.submit(device.identifier, OperationType.SCREENSHOT, screenshot_operation)
-            else:
-                self._view.set_device_busy(device.identifier, OperationType.IDLE)
-
-        else:
-
-            def screenshot_operation() -> Path:
-                return device.screenshot(output_file.resolve())
-
-            self._runner.submit(device.identifier, OperationType.SCREENSHOT, screenshot_operation)
+    def _confirm_mount_dev_image(self) -> bool:
+        return self._view.show_binary_choice(
+            title="Mount Developer Image",
+            text="Mount Developer Image",
+            information=("iOS 16 devices require a developer image to be mounted before taking a screenshot. Proceed?"),
+        )
 
     @Slot(Device, str)
     def _on_autoscroll_requested(self, device: Device, direction: str) -> None:
-        if device.os == "iOS":
-            self._view.show_operation_waring(
-                title="iOS Accessibility Options",
-                message="iOS requires Voice Control to be enabled before proceeding. Please ensure on in Settings > Accessibility > Voice Control.",
-            )
+        self._view.set_status(device.identifier, f"Autoscroll - {direction}")
+        self._check_accessibility(device)
 
         if device.identifier not in self._autoscroll_events:
             self._autoscroll_events[device.identifier] = threading.Event()
@@ -379,13 +354,23 @@ class DevicesController(QObject):
 
         self._runner.submit(device.identifier, OperationType.AUTOSCROLL, autoscroll_operation)
 
-    @Slot(Device, str)
-    def _on_autoscroll_screenshot_requested(self, device: Device, direction: str) -> None:
+    def _check_accessibility(self, device: Device) -> None:
         if device.os == "iOS":
             self._view.show_operation_waring(
                 title="iOS Accessibility Options",
                 message="iOS requires Voice Control to be enabled before proceeding. Please ensure on in Settings > Accessibility > Voice Control.",
             )
+
+    @Slot(Device, str)
+    def _on_autoscroll_screenshot_requested(self, device: Device, direction: str) -> None:
+        self._view.set_status(device.identifier, f"Autoscroll Screenshot - {direction}")
+        self._check_accessibility(device)
+
+        needs_dev_image = self._ios_needs_dev_image(device)
+
+        if needs_dev_image and not self._confirm_mount_dev_image():
+            self._view.set_device_busy(device.identifier, OperationType.IDLE)
+            return
 
         output_directory = (
             self._model.output_directory
@@ -399,39 +384,15 @@ class DevicesController(QObject):
         else:
             self._autoscroll_events[device.identifier].clear()
 
-        if (
-            device.os == "iOS"
-            and not ios.dev_image_mounted(device.identifier)
-            and ios.major_version(device.os_version) < 17
-        ):
-
-            def autoscroll_screenshot_operation() -> None:
+        def autoscroll_screenshot_operation() -> None:
+            if needs_dev_image:
                 ios.mount_dev_image(device.identifier)
-                device.autoscroll_screenshot(
-                    output_directory.resolve(), direction, self._autoscroll_events[device.identifier]
-                )
+            device.autoscroll_screenshot(
+                output_directory.resolve(), direction, self._autoscroll_events[device.identifier]
+            )
 
-            if self._view.show_binary_choice(
-                title="Mount Developer Image",
-                text="Mount Developer Image",
-                information="iOS 16 devices require a developer image to be mounted before taking a screenshot. Proceed?",
-            ):
-                self._runner.submit(
-                    device.identifier, OperationType.AUTOSCROLL_SCREENSHOT, autoscroll_screenshot_operation
-                )
-            else:
-                self._view.set_device_busy(device.identifier, OperationType.IDLE)
+        self._runner.submit(device.identifier, OperationType.AUTOSCROLL_SCREENSHOT, autoscroll_screenshot_operation)
 
-        else:
-
-            def autoscroll_screenshot_operation() -> None:
-                device.autoscroll_screenshot(
-                    output_directory.resolve(), direction, self._autoscroll_events[device.identifier]
-                )
-
-            self._runner.submit(device.identifier, OperationType.AUTOSCROLL_SCREENSHOT, autoscroll_screenshot_operation)
-
-    @Slot(Device)
     def _on_autoscroll_stop_requested(self, device: Device) -> None:
         if device.identifier in self._autoscroll_events:
             self._autoscroll_events[device.identifier].set()
