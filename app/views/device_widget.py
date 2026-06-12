@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QProgressBar,
     QPushButton,
     QSizePolicy,
@@ -55,6 +56,8 @@ class DeviceWidget(QWidget):
             self._enable_devmode_btn.show()
         else:
             self._enable_devmode_btn.hide()
+
+        self._exhibit_number_input = self._make_exhibit_number_input(layout)
 
         self._action_rows.extend(self._make_operation_grid(layout))
 
@@ -143,6 +146,17 @@ class DeviceWidget(QWidget):
         if self._device.connection_type == ConnectionType.FULL:
             label.hide()
         return label
+
+    def _make_exhibit_number_input(self, layout: QVBoxLayout) -> QLineEdit:
+        exhibit_number = QLineEdit(placeholderText="Exhibit Number")
+        exhibit_number.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        exhibit_number.editingFinished.connect(self._on_exhibit_number_changed)
+        layout.addWidget(exhibit_number)
+
+        return exhibit_number
+
+    def _on_exhibit_number_changed(self) -> None:
+        self._device.exhibit_id = self._exhibit_number_input.text()
 
     def _make_action_row(
         self, layout: QVBoxLayout, label: str, operation: OperationType

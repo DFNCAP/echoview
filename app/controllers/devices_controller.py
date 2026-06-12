@@ -457,6 +457,7 @@ class DevicesController(QObject):
         parts: list[str | Path] = [self._model.output_directory]
         if self._model.job_number:
             parts.append(self._model.job_number)
-        parts.append(device.exhibit_id or device.identifier)
+        unique_folder = f"{device.exhibit_id}_{device.identifier}" if device.exhibit_id else device.identifier
+        parts.append(unique_folder)
 
         return Path(*parts)
