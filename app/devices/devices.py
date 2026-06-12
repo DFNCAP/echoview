@@ -52,6 +52,7 @@ class Device(ABC):
     width: int = 0
     height: int = 0
     connection_type: ConnectionType = ConnectionType.NONE
+    exhibit_id: str = ""
 
     recording_process: subprocess.Popen[Any] | None = None
 

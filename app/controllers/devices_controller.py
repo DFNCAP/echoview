@@ -199,12 +199,7 @@ class DevicesController(QObject):
     def _on_backup_requested(self, device: Device) -> None:
         """Take a backup of the specified device."""
         logger.debug(f"Taking backup of {device.os} device: {device.identifier}")
-        output_file = (
-            self._model.output_directory
-            / (self._model.job_number or device.identifier)
-            / "backups"
-            / f"backup_{get_timestamp()}"
-        )
+        output_file = self._generate_output_directory(device) / "backups" / f"backup_{get_timestamp()}"
         reporter = StatusReporter()
         reporter.status_changed.connect(self._view.set_status)
         reporter.progress_changed.connect(self._view.set_progress)
@@ -220,11 +215,7 @@ class DevicesController(QObject):
         self._runner.submit(device.identifier, OperationType.BACKUP, backup_operation)
 
     def _on_contacts_extraction_requested(self, device: Device) -> None:
-        output_file = (
-            self._model.output_directory
-            / (self._model.job_number or device.identifier)
-            / f"contacts_{get_timestamp()}.txt"
-        )
+        output_file = self._generate_output_directory(device) / f"contacts_{get_timestamp()}.txt"
 
         self._view.set_status(device.identifier, "Extracting contacts")
 
@@ -239,11 +230,7 @@ class DevicesController(QObject):
 
     @Slot(Device)
     def _on_device_logs_extraction_requested(self, device: Device) -> None:
-        output_file = (
-            self._model.output_directory
-            / (self._model.job_number or device.identifier)
-            / f"device_logs_{get_timestamp()}.txt"
-        )
+        output_directory = self._generate_output_directory(device) / f"device_logs_{get_timestamp()}"
 
         reporter = StatusReporter()
         reporter.status_changed.connect(self._view.set_status)
@@ -255,7 +242,9 @@ class DevicesController(QObject):
             self._cancel_events[device.identifier].clear()
 
         def extract_device_logs_operation() -> None:
-            return device.extract_device_logs(output_file.resolve(), reporter, self._cancel_events[device.identifier])
+            return device.extract_device_logs(
+                output_directory.resolve(), reporter, self._cancel_events[device.identifier]
+            )
 
         self._runner.submit(
             device.identifier,
@@ -265,11 +254,8 @@ class DevicesController(QObject):
 
     @Slot(Device)
     def _on_device_info_extraction_requested(self, device: Device) -> None:
-        output_directory = (
-            self._model.output_directory
-            / (self._model.job_number or device.identifier)
-            / f"device_info_{get_timestamp()}.txt"
-        )
+        output_directory = self._generate_output_directory(device) / f"device_info_{get_timestamp()}"
+
         reporter = StatusReporter()
         reporter.status_changed.connect(self._view.set_status)
         reporter.progress_changed.connect(self._view.set_progress)
@@ -285,7 +271,7 @@ class DevicesController(QObject):
 
     @Slot(Device)
     def _on_screen_recording_requested(self, device: Device) -> None:
-        output_file = self._model.output_directory / (self._model.job_number or device.identifier) / "recordings"
+        output_file = self._generate_output_directory(device) / "recordings"
 
         if device.os == "iOS":
             # UxPlay controls file suffixes
@@ -316,12 +302,7 @@ class DevicesController(QObject):
             self._view.set_device_busy(device.identifier, OperationType.IDLE)
             return
 
-        output_file = (
-            self._model.output_directory
-            / (self._model.job_number or device.identifier)
-            / "screenshots"
-            / f"screenshot_{get_timestamp()}.png"
-        )
+        output_file = self._generate_output_directory(device) / "screenshots" / f"screenshot_{get_timestamp()}.png"
 
         def screenshot_operation() -> Path:
             if needs_dev_image:
@@ -377,11 +358,7 @@ class DevicesController(QObject):
             self._view.set_device_busy(device.identifier, OperationType.IDLE)
             return
 
-        output_directory = (
-            self._model.output_directory
-            / (self._model.job_number or device.identifier)
-            / f"autoscroll_screenshots_{get_timestamp()}"
-        )
+        output_directory = self._generate_output_directory(device) / f"autoscroll_screenshots_{get_timestamp()}"
 
         # Create or reset autoscroll screenshot event
         if device.identifier not in self._autoscroll_events:
@@ -475,3 +452,11 @@ class DevicesController(QObject):
         if now - self._last_usb_scan_time >= self._usb_scan_debounce_seconds:
             self._last_usb_scan_time = now
             self.start_scan()
+
+    def _generate_output_directory(self, device: Device) -> Path:
+        parts: list[str | Path] = [self._model.output_directory]
+        if self._model.job_number:
+            parts.append(self._model.job_number)
+        parts.append(device.exhibit_id or device.identifier)
+
+        return Path(*parts)
