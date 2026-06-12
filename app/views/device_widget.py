@@ -49,11 +49,12 @@ class DeviceWidget(QWidget):
         self._warning_label = self._make_warning_label(layout)
 
         self._action_rows: list[tuple[QPushButton, QProgressBar]] = []
-        self._enable_devmode_row = self._make_action_row(layout, "Enable Developer Mode", OperationType.ENABLE_DEV_MODE)
+        enable_devmode_row = self._make_action_row(layout, "Enable Developer Mode", OperationType.ENABLE_DEV_MODE)
+        self._enable_devmode_btn, self._enable_devmode_bar = enable_devmode_row
         if self._device.os == "iOS" and self._device.connection_type == ConnectionType.PARTIAL:
-            self._enable_devmode_row[0].show()
+            self._enable_devmode_btn.show()
         else:
-            self._enable_devmode_row[0].hide()
+            self._enable_devmode_btn.hide()
 
         self._action_rows.extend(self._make_operation_grid(layout))
 
@@ -389,10 +390,10 @@ class DeviceWidget(QWidget):
         partial_connection = self._device.connection_type == ConnectionType.PARTIAL
 
         if self._device.os == "iOS" and self._device.connection_type == ConnectionType.PARTIAL:
-            self._enable_devmode_row[0].show()
+            self._enable_devmode_btn.show()
         else:
-            self._enable_devmode_row[0].hide()
-            self._enable_devmode_row[1].hide()
+            self._enable_devmode_btn.hide()
+            self._enable_devmode_bar.hide()
 
         if full_connection:
             self._warning_label.hide()
@@ -424,6 +425,12 @@ class DeviceWidget(QWidget):
         self._reset_autoscroll_screenshot()
         self._reset_btn_states()
         self._cancel_btn.hide()
+        if self._device.os == "iOS" and self._device.connection_type == ConnectionType.PARTIAL:
+            self._enable_devmode_btn.show()
+            self._enable_devmode_bar.hide()
+        else:
+            self._enable_devmode_btn.hide()
+            self._enable_devmode_bar.hide()
 
     def _reset_autoscroll(self) -> None:
         self._autoscroll_active = False

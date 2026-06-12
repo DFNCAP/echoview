@@ -7,7 +7,7 @@ from pathlib import Path
 
 from loguru import logger
 from PySide6.QtCore import QObject, Signal, Slot
-from usbmonitor import USBMonitor
+from usbmonitor import USBMonitor  # type: ignore[import-untyped]
 
 from app.devices import android, ios
 from app.devices.devices import Device, OperationType, StatusReporter
@@ -425,6 +425,14 @@ class DevicesController(QObject):
 
     @Slot(Device)
     def _on_enable_devmode_requested(self, device: Device) -> None:
+        if not self._view.show_binary_choice(
+            title="Enable Developer Mode",
+            text="Enable Developer Mode",
+            information=("Enabling developer mode will reboot the device. Proceed?"),
+        ):
+            self._view.set_device_busy(device.identifier, OperationType.IDLE)
+            return
+
         def enable_dev_mode_operation() -> None:
             ios.enable_devmode(device.identifier)
             if float(device.os_version) < 17.0 and not ios.dev_image_mounted(device.identifier):
@@ -456,12 +464,10 @@ class DevicesController(QObject):
 
         self._runner.shutdown()
 
-    def _on_usb_connect(self, device_id, device_info) -> None:
-        logger.info("USB device connected")
+    def _on_usb_connect(self, device_id: str, device_info: dict[str, str | tuple[str, ...]]) -> None:
         self._trigger_scan()
 
-    def _on_usb_disconnect(self, device_id, device_info) -> None:
-        logger.info("USB device disconnected")
+    def _on_usb_disconnect(self, device_id: str, device_info: dict[str, str | tuple[str, ...]]) -> None:
         self._trigger_scan()
 
     def _trigger_scan(self) -> None:
