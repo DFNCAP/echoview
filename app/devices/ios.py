@@ -24,6 +24,10 @@ class DuplicateImageError(Exception):
     """Raised when duplicate images are detected during autoscroll screenshot."""
 
 
+class PasscodeEnabledError(Exception):
+    """Raised when attempting to enable developer mode with a passcode enabled"""
+
+
 def _goios() -> str:
     """Get the path to the ADB executable."""
     return str(AppInfo().goios_path)
@@ -127,13 +131,13 @@ class iOSDevice(Device):
             for line in self.recording_process.stdout:
                 logger.debug(line.strip())
                 if "An Open-Source AirPlay mirroring and audio-streaming server" in line:
-                    reporter.status_changed.emit("Initialising UxPlay")
+                    reporter.status_changed.emit(self.identifier, "Initialising UxPlay")
                 elif "Initialized server socket" in line:
-                    reporter.status_changed.emit("Waiting for connection")
+                    reporter.status_changed.emit(self.identifier, "Waiting for connection")
                 elif "CLIENT MUST NOW ENTER PIN" in line:
-                    reporter.status_changed.emit("UXPLAY_ENTER_PIN")
+                    reporter.status_changed.emit(self.identifier, "UXPLAY_ENTER_PIN")
                 elif "Begin streaming to GStreamer video pipeline" in line:
-                    reporter.status_changed.emit("Recording")
+                    reporter.status_changed.emit(self.identifier, "Recording iOS device")
                 elif "Stopped recording" in line:
                     self.recording_process.terminate()
 
@@ -270,11 +274,15 @@ def devmode_enabled(udid: str) -> bool:
 
 
 def enable_devmode(udid: str) -> None:
-    run(
+    proc = run(
         [_goios(), "devmode", "enable", "--enable-post-restart", "--udid", udid],
         capture_output=True,
         text=True,
     )
+    if "Device has a passcode set" in proc.stderr:
+        raise PasscodeEnabledError(
+            "Developer mode cannot be enabled while a passcode is set. Either manually enable it and rescan, or disable passcode and try again."
+        )
 
 
 def dev_image_mounted(udid: str) -> bool:

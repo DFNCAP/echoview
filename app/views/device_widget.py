@@ -319,7 +319,7 @@ class DeviceWidget(QWidget):
         for btn, combo in self._combo_rows:
             btn.setDisabled(True)
             combo.setDisabled(True)
-        if operation != OperationType.ENABLE_DEV_MODE or self._device.os == "iOS":
+        if operation != OperationType.ENABLE_DEV_MODE:
             self._cancel_btn.show()
             self._cancel_btn.setEnabled(True)
 
@@ -331,7 +331,9 @@ class DeviceWidget(QWidget):
             self._cancel_btn.setDisabled(True)
             return
 
-        autoscroll_only = self._autoscroll_active and not self._recording_active and not self._autoscroll_screenshot_active
+        autoscroll_only = (
+            self._autoscroll_active and not self._recording_active and not self._autoscroll_screenshot_active
+        )
 
         for btn, bar in self._action_rows:
             is_screenshot = "Screenshot" in btn.text()
@@ -352,7 +354,7 @@ class DeviceWidget(QWidget):
                 btn.setDisabled(True)
                 combo.setDisabled(True)
 
-        if self._recording_active and self._device.os != "iOS":
+        if self._recording_active:
             self._cancel_btn.show()
             self._cancel_btn.setEnabled(True)
         else:
@@ -366,6 +368,8 @@ class DeviceWidget(QWidget):
             return
         self._status = status
         self._status_label.setText(status)
+        if status == "Recording iOS device":
+            self._cancel_btn.hide()
 
     @Slot(int, int)
     def set_progress(self, current: int, total: int) -> None:

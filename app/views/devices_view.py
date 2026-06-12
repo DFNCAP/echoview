@@ -128,16 +128,6 @@ class DevicesView(QWidget):
         if device_id in self._device_widget_map:
             self._device_widget_map[device_id].set_busy(operation)
 
-    # def set_device_autoscroll_finished(self, device_id: str) -> None:
-    #     """Signal that autoscroll has finished for a device."""
-    #     if device_id in self._device_widget_map:
-    #         self._device_widget_map[device_id].set_autoscroll_finished()
-
-    # def set_device_recording_finished(self, device_id: str) -> None:
-    #     """Signal that recording has finished while autoscroll may still be running."""
-    #     if device_id in self._device_widget_map:
-    #         self._device_widget_map[device_id].set_recording_finished()
-
     def get_widget(self, identifier: str) -> QWidget | None:
         return self._device_widget_map.get(identifier)
 

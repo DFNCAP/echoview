@@ -1,5 +1,7 @@
 import platform
+import subprocess
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -159,20 +161,22 @@ class AndroidDevice(Device):
             reporter.progress_changed.emit(self.identifier, 0, 4)
             reporter.status_changed.emit(self.identifier, "Dumping system log")
 
-        dumpsys_proc = run(
-            [
-                _adb(),
-                "-s",
-                self.identifier,
-                "shell",
-                "dumpsys",
-            ],
-            capture_output=True,
+        dumpsys_proc = popen(
+            [_adb(), "-s", self.identifier, "shell", "dumpsys"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
-        if dumpsys_proc.stdout:
+        while dumpsys_proc.poll() is None:
+            if cancelled and cancelled.is_set():
+                dumpsys_proc.kill()
+                dumpsys_proc.wait()
+                return
+            time.sleep(0.05)
+        dumpsys_stdout = dumpsys_proc.stdout.read() if dumpsys_proc.stdout else b""
+        if dumpsys_stdout:
             output_directory.mkdir(parents=True, exist_ok=True)
             output_file = output_directory / "dumpsys.log"
-            output_file.write_bytes(dumpsys_proc.stdout)
+            output_file.write_bytes(dumpsys_stdout)
 
         if cancelled and cancelled.is_set():
             return
@@ -182,16 +186,13 @@ class AndroidDevice(Device):
             reporter.status_changed.emit(self.identifier, "Generating bug report archive")
         output_directory.mkdir(parents=True, exist_ok=True)
         output_file = output_directory / "bugreport-archive.zip"
-        bugreport_proc = run(
-            [
-                _adb(),
-                "-s",
-                self.identifier,
-                "bugreport",
-                output_file,
-            ],
-            capture_output=True,
-        )
+        bugreport_proc = popen([_adb(), "-s", self.identifier, "bugreport", output_file])
+        while bugreport_proc.poll() is None:
+            if cancelled and cancelled.is_set():
+                bugreport_proc.kill()
+                bugreport_proc.wait()
+                return
+            time.sleep(0.05)
         if cancelled and cancelled.is_set():
             return
 
@@ -237,7 +238,7 @@ class AndroidDevice(Device):
     ) -> None:
         output_file.parent.mkdir(parents=True, exist_ok=True)
         if reporter:
-            reporter.status_changed.emit(self.identifier, "Screen recording")
+            reporter.status_changed.emit(self.identifier, "Recording Android device")
         self.recording_process = popen(
             [
                 _scrcpy(),

@@ -1,11 +1,13 @@
 import subprocess
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from loguru import logger
 from PySide6.QtCore import QObject, Signal, Slot
+from usbmonitor import USBMonitor
 
 from app.devices import android, ios
 from app.devices.devices import Device, OperationType, StatusReporter
@@ -82,6 +84,12 @@ class DevicesController(QObject):
         # Track running operations per device
         self._device_operations: dict[str, set[OperationType]] = {}
 
+        self._last_usb_scan_time: float = 0.0
+        self._usb_scan_debounce_seconds: float = 1.0
+
+        self._monitor = USBMonitor()
+        self._monitor.start_monitoring(on_connect=self._on_usb_connect, on_disconnect=self._on_usb_disconnect)
+
     @Slot(Path)
     def set_output_directory(self, directory: Path) -> None:
         self._model.output_directory = directory
@@ -111,15 +119,10 @@ class DevicesController(QObject):
     @Slot(str, int)
     def _on_operation_started(self, device_id: str, operation_type: OperationType) -> None:
         logger.debug(f"Started operation {operation_type.name} for device {device_id}")
-        # Show scanning indicator for device scan
+
         if operation_type == OperationType.DEVICE_SCAN:
             self._view.set_scanning(True)
             return
-
-        # Track this operation for the device
-        # if device_id not in self._device_operations:
-        #     self._device_operations[device_id] = set()
-        # self._device_operations[device_id].add(operation_type)
 
         self._view.set_device_busy(device_id, operation_type)
 
@@ -151,10 +154,12 @@ class DevicesController(QObject):
 
         self._view.set_device_busy(device_id, OperationType.IDLE)
 
-
     @Slot(str, str, str)
     def _on_operation_failed(self, device_id: str, operation_type: OperationType, error: str) -> None:
         logger.warning(f"Error during operation {operation_type.name} for device {device_id}")
+
+        if operation_type == OperationType.AUTOSCROLL_SCREENSHOT:
+            self._view.set_device_busy(device_id, OperationType.STOP_AUTOSCROLL_SCREENSHOT)
 
         self._view.set_device_busy(device_id, OperationType.IDLE)
         self._view.show_operation_waring(f"{operation_type.name} failed", error)
@@ -428,6 +433,7 @@ class DevicesController(QObject):
         self._runner.submit(device.identifier, OperationType.ENABLE_DEV_MODE, enable_dev_mode_operation)
 
     def shutdown(self) -> None:
+        self._monitor.stop_monitoring()
         android.kill_server()
 
         # Kill all pending tasks before shutting down
@@ -449,3 +455,17 @@ class DevicesController(QObject):
             self._go_ios_tunnel_proc = None
 
         self._runner.shutdown()
+
+    def _on_usb_connect(self, device_id, device_info) -> None:
+        logger.info("USB device connected")
+        self._trigger_scan()
+
+    def _on_usb_disconnect(self, device_id, device_info) -> None:
+        logger.info("USB device disconnected")
+        self._trigger_scan()
+
+    def _trigger_scan(self) -> None:
+        now = time.time()
+        if now - self._last_usb_scan_time >= self._usb_scan_debounce_seconds:
+            self._last_usb_scan_time = now
+            self.start_scan()
