@@ -335,8 +335,15 @@ class DevicesController(QObject):
         else:
             self._autoscroll_events[device.identifier].clear()
 
+        reporter = StatusReporter()
+        reporter.status_changed.connect(self._view.set_status)
+
         def autoscroll_operation() -> None:
-            device.start_autoscroll(direction, self._autoscroll_events[device.identifier])
+            device.start_autoscroll(
+                direction,
+                self._autoscroll_events[device.identifier],
+                reporter,
+            )
 
         self._runner.submit(device.identifier, OperationType.AUTOSCROLL, autoscroll_operation)
 
@@ -358,7 +365,7 @@ class DevicesController(QObject):
             self._view.set_device_busy(device.identifier, OperationType.IDLE)
             return
 
-        output_directory = self._generate_output_directory(device) / f"autoscroll_screenshots_{get_timestamp()}"
+        output_directory = self._generate_output_directory(device) / "screenshots"
 
         # Create or reset autoscroll screenshot event
         if device.identifier not in self._autoscroll_events:
@@ -366,11 +373,17 @@ class DevicesController(QObject):
         else:
             self._autoscroll_events[device.identifier].clear()
 
+        reporter = StatusReporter()
+        reporter.status_changed.connect(self._view.set_status)
+
         def autoscroll_screenshot_operation() -> None:
             if needs_dev_image:
                 ios.mount_dev_image(device.identifier)
             device.autoscroll_screenshot(
-                output_directory.resolve(), direction, self._autoscroll_events[device.identifier]
+                output_directory.resolve(),
+                direction,
+                self._autoscroll_events[device.identifier],
+                reporter,
             )
 
         self._runner.submit(device.identifier, OperationType.AUTOSCROLL_SCREENSHOT, autoscroll_screenshot_operation)

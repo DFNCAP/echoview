@@ -1,8 +1,18 @@
 # TODO
 - [] Button layout
-- [] Passcode on Developer mode not working properly
+- [X] Passcode on Developer mode not working properly
 - [X] Fixed spaces in folder paths for iOS recordings
-- [] Firewall instructions for DF SOE
-- [] Move status to title line and make it red when not idle
+- [X] Firewall instructions for DF SOE
+- [X] Move status to title line and make it red when not idle
 - [X] Fix contact extraction
 - [] Fix MAC address restriction for UxPlay - possibly unfixable due to MAC randomisation on iOS
+- [X] Improve Android apps dump output
+- [X] Scan for devices tooltop/relabel - change to "Refresh" and add a tooltip?
+- [] Auto scan logic when enabling developer mode? Should be implemented already with USB monitor
+- [X] Update status during autoscroll screenshot to indicate when a screenshot is being taken
+- [X] Autoscroll screenshots can just go inside "screenshots" directory
+- [X] Improve screenshot naming convention
+- [] Make screenshot vs autoscroll screenshot buttons more visually distinct
+- [X] Colour change for start/stop autoscroll buttons
+- [] Screen recording progress bar bugs out sometimes
+- [X] Screen recording cancel button should say "Stop" instead of cancel

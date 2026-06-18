@@ -1,5 +1,6 @@
 from loguru import logger
 from PySide6.QtCore import Signal, Slot
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
     QBoxLayout,
     QComboBox,
@@ -34,13 +35,10 @@ class DeviceWidget(QWidget):
         self._autoscroll_active = False
         self._recording_active = False
         self._autoscroll_screenshot_active = False
-        self._persistent_status: str = ""
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(1)
-
-        # self._heading_label, self._status_label = self._make_heading_row(layout)
+        # layout.setSpacing(1)
 
         self._heading_label = self._make_title_label(layout)
 
@@ -94,19 +92,6 @@ class DeviceWidget(QWidget):
     # ------------------------------------------------------------------ #
     # Setup
     # ------------------------------------------------------------------ #
-    def _make_heading_row(self, layout: QVBoxLayout) -> tuple[QLabel, QLabel]:
-        widget = QWidget()
-        # widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        sublayout = QHBoxLayout()
-        sublayout.setContentsMargins(0, 0, 0, 0)
-        sublayout.setSpacing(1)
-        heading_label = self._make_title_label(sublayout)
-        status_label = self._make_status_label(sublayout)
-        widget.setLayout(sublayout)
-        layout.addWidget(widget)
-
-        return heading_label, status_label
-
     def _make_title_label(self, layout: QBoxLayout) -> QLabel:
         label = QLabel(self._device.device_name or self._device.identifier)
         font = label.font()
@@ -140,7 +125,8 @@ class DeviceWidget(QWidget):
     def _make_warning_label(self, layout: QVBoxLayout) -> QLabel:
         label = QLabel(self._get_warning_text())
         label.setFixedHeight(label.fontMetrics().height())
-        label.setStyleSheet("color: red; font-weight: bold;")
+        label.setForegroundRole(QPalette.ColorRole.BrightText)
+        label.setStyleSheet("font-weight: bold;")
         layout.addWidget(label)
 
         if self._device.connection_type == ConnectionType.FULL:
@@ -200,11 +186,7 @@ class DeviceWidget(QWidget):
     def _make_combo_row(
         self, layout: QVBoxLayout, btn_label: str, combo_labels: list[str], operation: OperationType
     ) -> tuple[QPushButton, QComboBox]:
-        widget = QWidget()
-        # widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         sublayout = QHBoxLayout()
-        sublayout.setContentsMargins(0, 0, 0, 0)
-        sublayout.setSpacing(1)
         btn = QPushButton(btn_label)
         combo = QComboBox()
         combo.addItems(combo_labels)
@@ -212,8 +194,7 @@ class DeviceWidget(QWidget):
 
         sublayout.addWidget(btn)
         sublayout.addWidget(combo)
-        widget.setLayout(sublayout)
-        layout.addWidget(widget)
+        layout.addLayout(sublayout)
 
         return btn, combo
 
@@ -221,7 +202,8 @@ class DeviceWidget(QWidget):
         btn = QPushButton("Cancel")
         btn.clicked.connect(self._on_cancel_requested)
 
-        btn.setStyleSheet("QPushButton { background-color: red; }")
+        # btn.setStyleSheet("QPushButton { background-color: red; }")
+        btn.setStyleSheet("QPushButton {background-color: palette(bright-text); color: palette(window); }")
         policy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         policy.setRetainSizeWhenHidden(True)
         btn.setSizePolicy(policy)
@@ -254,22 +236,42 @@ class DeviceWidget(QWidget):
             btn.setEnabled(True)
             combo.setEnabled(True)
 
+        self._cancel_btn.setText("Cancel")
+
     # ------------------------------------------------------------------ #
     # Public
     # ------------------------------------------------------------------ #
     def set_busy(self, operation: OperationType) -> None:
+        logger.debug(f"Setting busy for operation {operation.name} for device {self._device.identifier}")
         match operation:
             case OperationType.IDLE:
-                if self._autoscroll_active or self._recording_active or self._autoscroll_screenshot_active:
-                    self._restore_action_rows()
-                    self.set_status(self._persistent_status)
-                    self._apply_busy_state()
-                else:
-                    self._apply_idle_state()
+                # if self._autoscroll_active or self._recording_active or self._autoscroll_screenshot_active:
+                #     logger.debug("Something still active")
+                #     self._restore_action_rows()
+                #     self.set_status(self._persistent_status)
+                #     self._apply_busy_state()
+                # else:
+                self._apply_idle_state()
+                return
+
+            case OperationType.SCREEN_RECORDING:
+                self._recording_active = True
+                self._cancel_btn.setText("Stop Recording")
+                self._apply_busy_state()
+                return
+
+            case OperationType.STOP_SCREEN_RECORDING:
+                self.set_status("")
+                self._recording_active = False
+                self._restore_action_rows()
+                self._apply_busy_state()
                 return
 
             case OperationType.AUTOSCROLL:
                 self._autoscroll_btn.setText("Stop Autoscroll")
+                self._autoscroll_btn.setStyleSheet(
+                    "QPushButton {background-color: palette(bright-text); color: palette(window); }"
+                )
                 self._autoscroll_btn.clicked.disconnect()
                 self._autoscroll_btn.clicked.connect(
                     lambda: self._on_combo_row_clicked(
@@ -277,37 +279,24 @@ class DeviceWidget(QWidget):
                     )
                 )
                 self._autoscroll_active = True
-                if not self._recording_active:
-                    self._persistent_status = self._status
                 self._apply_busy_state()
                 return
 
             case OperationType.STOP_AUTOSCROLL:
                 self._reset_autoscroll()
                 if self._recording_active:
-                    self.set_status(self._persistent_status)
+                    self.set_status(f"Recording {self._device.os} device")
                 else:
                     self._persistent_status = ""
                     self.set_status("")
                 self._apply_busy_state()
                 return
 
-            case OperationType.SCREEN_RECORDING:
-                self._recording_active = True
-                self._persistent_status = self._status
-                self._apply_busy_state()
-                return
-
-            case OperationType.STOP_SCREEN_RECORDING:
-                self._persistent_status = ""
-                self.set_status("")
-                self._recording_active = False
-                self._restore_action_rows()
-                self._apply_busy_state()
-                return
-
             case OperationType.AUTOSCROLL_SCREENSHOT:
                 self._autoscroll_screenshot_btn.setText("Stop Autoscroll Screenshot")
+                self._autoscroll_screenshot_btn.setStyleSheet(
+                    "QPushButton {background-color: palette(bright-text); color: palette(window); }"
+                )
                 self._autoscroll_screenshot_btn.clicked.disconnect()
                 self._autoscroll_screenshot_btn.clicked.connect(
                     lambda: self._on_combo_row_clicked(
@@ -381,10 +370,12 @@ class DeviceWidget(QWidget):
         if status == "UXPLAY_ENTER_PIN":
             show_warning("Enter Pin", "Enter pin '1234' on the device to continue")
             return
+        if status == "UXPLAY_STARTED_RECORDING":
+            self._cancel_btn.hide()
+            return
+
         self._status = status
         self._status_label.setText(status)
-        if status == "Recording iOS device":
-            self._cancel_btn.hide()
 
     @Slot(int, int)
     def set_progress(self, current: int, total: int) -> None:
@@ -449,6 +440,7 @@ class DeviceWidget(QWidget):
     def _reset_autoscroll(self) -> None:
         self._autoscroll_active = False
         self._autoscroll_btn.setText("Start Autoscroll")
+        self._autoscroll_btn.setStyleSheet("")
         self._autoscroll_btn.clicked.disconnect()
         self._autoscroll_btn.clicked.connect(
             lambda: self._on_combo_row_clicked(self._autoscroll_btn, self._autoscroll_combo, OperationType.AUTOSCROLL)
@@ -458,6 +450,7 @@ class DeviceWidget(QWidget):
     def _reset_autoscroll_screenshot(self) -> None:
         self._autoscroll_screenshot_active = False
         self._autoscroll_screenshot_btn.setText("Start Autoscroll Screenshot")
+        self._autoscroll_screenshot_btn.setStyleSheet("")
         self._autoscroll_screenshot_btn.clicked.disconnect()
         self._autoscroll_screenshot_btn.clicked.connect(
             lambda: self._on_combo_row_clicked(

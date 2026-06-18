@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from loguru import logger
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 from app.utils.app_info import AppInfo
 from app.utils.generic import platform_specific_open
 
-LOGO = """
+LOGO = r"""
  _____     _           _   _ _               
 |  ___|   | |         | | | (_)              
 | |__  ___| |__   ___ | | | |_  _____      __
@@ -125,7 +125,8 @@ class OverviewView(QWidget):
         return btn
 
     def _create_device_scan_btn(self) -> QPushButton:
-        btn = QPushButton("Scan for Devices")
+        btn = QPushButton("Refresh")
+        btn.setToolTip("Perform device scan to refresh display")
         btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn.clicked.connect(self._on_device_scan_pressed)
 

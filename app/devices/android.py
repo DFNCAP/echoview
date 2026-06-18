@@ -9,8 +9,9 @@ from imagehash import average_hash
 from loguru import logger
 from PIL import Image
 
-from app.devices.devices import ConnectionType, Device, StatusReporter
+from app.devices.devices import ConnectionType, Device, NullReporter, StatusReporter
 from app.utils.app_info import AppInfo
+from app.utils.generic import get_timestamp
 from app.utils.subprocess_helpers import popen, run
 
 
@@ -42,7 +43,7 @@ class AndroidDevice(Device):
     def backup(
         self,
         output_directory: Path,
-        reporter: StatusReporter | None = None,
+        reporter: StatusReporter | NullReporter = NullReporter(),
         cancelled: threading.Event | None = None,
     ) -> Path:
 
@@ -54,9 +55,8 @@ class AndroidDevice(Device):
         for i, item in enumerate(items_to_dump, 1):
             if cancelled and cancelled.is_set():
                 return Path()
-            if reporter:
-                reporter.progress_changed.emit(self.identifier, i, len(items_to_dump))
-                reporter.status_changed.emit(self.identifier, f"Dumping {item}")
+            reporter.progress_changed.emit(self.identifier, i, len(items_to_dump))
+            reporter.status_changed.emit(self.identifier, f"Dumping {item}")
 
             if item in installed_packages:
                 dump_apk(self.identifier, item, output_directory / "installed_packages")
@@ -80,11 +80,13 @@ class AndroidDevice(Device):
         return output_file
 
     def extract_device_info(
-        self, output_directory: Path, reporter: StatusReporter | None = None, cancelled: threading.Event | None = None
+        self,
+        output_directory: Path,
+        reporter: StatusReporter | NullReporter = NullReporter(),
+        cancelled: threading.Event | None = None,
     ) -> None:
-        if reporter:
-            reporter.status_changed.emit(self.identifier, "Dumping props")
-            reporter.progress_changed.emit(self.identifier, 0, 4)
+        reporter.status_changed.emit(self.identifier, "Dumping props")
+        reporter.progress_changed.emit(self.identifier, 0, 4)
 
         getprop_proc = run([_adb(), "-s", self.identifier, "shell", "getprop"], capture_output=True)
         if getprop_proc.stdout:
@@ -92,9 +94,8 @@ class AndroidDevice(Device):
             output_file = output_directory / "getprop_raw.txt"
             output_file.write_bytes(getprop_proc.stdout)
 
-        if reporter:
-            reporter.status_changed.emit(self.identifier, "Dumping system settings")
-            reporter.progress_changed.emit(self.identifier, 1, 4)
+        reporter.status_changed.emit(self.identifier, "Dumping system settings")
+        reporter.progress_changed.emit(self.identifier, 1, 4)
         system_settings_proc = run(
             [_adb(), "-s", self.identifier, "shell", "settings", "list", "system"],
             capture_output=True,
@@ -104,9 +105,8 @@ class AndroidDevice(Device):
             output_file = output_directory / "system_settings_raw.txt"
             output_file.write_bytes(system_settings_proc.stdout)
 
-        if reporter:
-            reporter.status_changed.emit(self.identifier, "Dumping secure settings")
-            reporter.progress_changed.emit(self.identifier, 2, 4)
+        reporter.status_changed.emit(self.identifier, "Dumping secure settings")
+        reporter.progress_changed.emit(self.identifier, 2, 4)
         secure_settings_proc = run(
             [_adb(), "-s", self.identifier, "shell", "settings", "list", "secure"],
             capture_output=True,
@@ -116,9 +116,8 @@ class AndroidDevice(Device):
             output_file = output_directory / "secure_settings_raw.txt"
             output_file.write_bytes(secure_settings_proc.stdout)
 
-        if reporter:
-            reporter.status_changed.emit(self.identifier, "Dumping global settings")
-            reporter.progress_changed.emit(self.identifier, 3, 4)
+        reporter.status_changed.emit(self.identifier, "Dumping global settings")
+        reporter.progress_changed.emit(self.identifier, 3, 4)
         global_settings_proc = run(
             [_adb(), "-s", self.identifier, "shell", "settings", "list", "global"],
             capture_output=True,
@@ -128,38 +127,29 @@ class AndroidDevice(Device):
             output_file = output_directory / "global_settings_raw.txt"
             output_file.write_bytes(global_settings_proc.stdout)
 
-        if reporter:
-            reporter.status_changed.emit(self.identifier, "Dumping app list")
-            reporter.progress_changed.emit(self.identifier, 4, 4)
-        apps_list_proc = run(
-            [
-                _adb(),
-                "-s",
-                self.identifier,
-                "shell",
-                "pm",
-                "list",
-                "packages",
-                "-f",
-                "-u",
-            ],
-            capture_output=True,
-        )
-        if apps_list_proc.stdout:
+        reporter.status_changed.emit(self.identifier, "Dumping app list")
+        reporter.progress_changed.emit(self.identifier, 4, 4)
+        installed_packages = list_installed_packages(self.identifier)
+        if installed_packages:
             output_directory.mkdir(parents=True, exist_ok=True)
-            output_file = output_directory / "apps.txt"
-            output_file.write_bytes(apps_list_proc.stdout)
+            output_file = output_directory / "third_party_apps.log"
+            output_file.write_text("\n".join(installed_packages), encoding="utf8")
+
+        system_packages = list_system_packages(self.identifier)
+        if system_packages:
+            output_directory.mkdir(parents=True, exist_ok=True)
+            output_file = output_directory / "system_apps.log"
+            output_file.write_text("\n".join(system_packages), encoding="utf8")
 
     def extract_device_logs(
         self,
         output_directory: Path,
-        reporter: StatusReporter | None = None,
+        reporter: StatusReporter | NullReporter = NullReporter(),
         cancelled: threading.Event | None = None,
     ) -> None:
 
-        if reporter:
-            reporter.progress_changed.emit(self.identifier, 0, 4)
-            reporter.status_changed.emit(self.identifier, "Dumping system log")
+        reporter.progress_changed.emit(self.identifier, 0, 4)
+        reporter.status_changed.emit(self.identifier, "Dumping system log")
 
         dumpsys_proc = popen(
             [_adb(), "-s", self.identifier, "shell", "dumpsys"],
@@ -181,9 +171,8 @@ class AndroidDevice(Device):
         if cancelled and cancelled.is_set():
             return
 
-        if reporter:
-            reporter.progress_changed.emit(self.identifier, 1, 4)
-            reporter.status_changed.emit(self.identifier, "Generating bug report archive")
+        reporter.progress_changed.emit(self.identifier, 1, 4)
+        reporter.status_changed.emit(self.identifier, "Generating bug report archive")
         output_directory.mkdir(parents=True, exist_ok=True)
         output_file = output_directory / "bugreport-archive.zip"
         bugreport_proc = popen([_adb(), "-s", self.identifier, "bugreport", output_file])
@@ -196,9 +185,8 @@ class AndroidDevice(Device):
         if cancelled and cancelled.is_set():
             return
 
-        if reporter:
-            reporter.progress_changed.emit(self.identifier, 2, 4)
-            reporter.status_changed.emit(self.identifier, "Dumping logcat stats")
+        reporter.progress_changed.emit(self.identifier, 2, 4)
+        reporter.status_changed.emit(self.identifier, "Dumping logcat stats")
 
         logcat_stats_proc = run(
             [_adb(), "-s", self.identifier, "shell", "logcat", "-S", "-b", "all"],
@@ -212,9 +200,8 @@ class AndroidDevice(Device):
         if cancelled and cancelled.is_set():
             return
 
-        if reporter:
-            reporter.progress_changed.emit(self.identifier, 3, 4)
-            reporter.status_changed.emit(self.identifier, "Dumping logcat logs")
+        reporter.progress_changed.emit(self.identifier, 3, 4)
+        reporter.status_changed.emit(self.identifier, "Dumping logcat logs")
 
         logcat_logs_proc = run(
             [_adb(), "-s", self.identifier, "shell", "logcat", "-d", "-b", "all"],
@@ -227,18 +214,17 @@ class AndroidDevice(Device):
         if cancelled and cancelled.is_set():
             return
 
-        if reporter:
-            reporter.progress_changed.emit(self.identifier, 4, 4)
-            reporter.status_changed.emit(self.identifier, "Finalising")
+        reporter.progress_changed.emit(self.identifier, 4, 4)
+        reporter.status_changed.emit(self.identifier, "Finalising")
 
     def start_screen_recording(
         self,
         output_file: Path,
-        reporter: StatusReporter | None = None,
+        reporter: StatusReporter | NullReporter = NullReporter(),
     ) -> None:
         output_file.parent.mkdir(parents=True, exist_ok=True)
-        if reporter:
-            reporter.status_changed.emit(self.identifier, "Recording Android device")
+        reporter.status_changed.emit(self.identifier, f"Recording {self.os} device")
+
         self.recording_process = popen(
             [
                 _scrcpy(),
@@ -255,7 +241,7 @@ class AndroidDevice(Device):
 
     def stop_screen_recording(
         self,
-        reporter: StatusReporter | None = None,
+        reporter: StatusReporter | NullReporter = NullReporter(),
     ) -> None:
         if self.recording_process:
             if platform.system() == "Windows":
@@ -266,21 +252,38 @@ class AndroidDevice(Device):
             else:
                 self.recording_process.terminate()
 
-    def screenshot(self, output_file: Path) -> Path:
+    def screenshot(
+        self,
+        output_file: Path,
+        reporter: StatusReporter | NullReporter = NullReporter(),
+    ) -> Path:
 
         return screenshot(self.identifier, output_file)
 
-    def start_autoscroll(self, direction: str, cancelled: threading.Event) -> None:
+    def start_autoscroll(
+        self,
+        direction: str,
+        cancelled: threading.Event,
+        reporter: StatusReporter | NullReporter = NullReporter(),
+    ) -> None:
         while not cancelled.is_set():
+            reporter.status_changed.emit(self.identifier, f"Scrolling {direction}")
             scroll(
                 self.identifier,
                 direction,
                 self.width or 1080,
                 self.height or 1920,
             )
+            reporter.status_changed.emit(self.identifier, "Waiting")
             cancelled.wait(timeout=2.0)
 
-    def autoscroll_screenshot(self, output_directory: Path, direction: str, cancelled: threading.Event) -> None:
+    def autoscroll_screenshot(
+        self,
+        output_directory: Path,
+        direction: str,
+        cancelled: threading.Event,
+        reporter: StatusReporter | NullReporter = NullReporter(),
+    ) -> None:
 
         output_directory.mkdir(parents=True, exist_ok=True)
 
@@ -289,8 +292,9 @@ class AndroidDevice(Device):
         duplicate_threshold = 5
 
         while not cancelled.is_set():
-            # Take screenshot
-            output_file = output_directory / f"screenshot_{screenshot_count:04d}.png"
+            reporter.status_changed.emit(self.identifier, "Taking screenshot")
+            output_file = output_directory / f"screenshot_{get_timestamp()}.png"
+
             screenshot(self.identifier, output_file)
             screenshot_count += 1
 
@@ -309,6 +313,7 @@ class AndroidDevice(Device):
                 raise
 
             # Scroll
+            reporter.status_changed.emit(self.identifier, f"Scrolling {direction}")
             scroll(
                 self.identifier,
                 direction,

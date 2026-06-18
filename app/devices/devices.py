@@ -14,6 +14,15 @@ class StatusReporter(QObject):
     progress_changed = Signal(str, int, int)
 
 
+class NullReporter:
+    class _NoOpSignal:
+        def emit(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+    status_changed = _NoOpSignal()
+    progress_changed = _NoOpSignal()
+
+
 class ConnectionType(Enum):
     NONE = 0
     PARTIAL = 1
@@ -60,7 +69,7 @@ class Device(ABC):
     def backup(
         self,
         output_directory: Path,
-        reporter: StatusReporter | None = None,
+        reporter: StatusReporter | NullReporter = NullReporter(),
         cancelled: threading.Event | None = None,
     ) -> Path:
         """Take a backup and return the output path."""
@@ -75,7 +84,7 @@ class Device(ABC):
     def extract_device_info(
         self,
         output_directory: Path,
-        reporter: StatusReporter | None = None,
+        reporter: StatusReporter | NullReporter = NullReporter(),
         cancelled: threading.Event | None = None,
     ) -> None:
         """Take a screenshot and return the output path."""
@@ -85,7 +94,7 @@ class Device(ABC):
     def extract_device_logs(
         self,
         output_directory: Path,
-        reporter: StatusReporter | None = None,
+        reporter: StatusReporter | NullReporter = NullReporter(),
         cancelled: threading.Event | None = None,
     ) -> None:
         """Take a screenshot and return the output path."""
@@ -95,29 +104,44 @@ class Device(ABC):
     def start_screen_recording(
         self,
         output_file: Path,
-        reporter: StatusReporter | None = None,
+        reporter: StatusReporter | NullReporter = NullReporter(),
     ) -> None:
         pass
 
     @abstractmethod
     def stop_screen_recording(
         self,
-        reporter: StatusReporter | None = None,
+        reporter: StatusReporter | NullReporter = NullReporter(),
     ) -> None:
         pass
 
     @abstractmethod
-    def screenshot(self, output_file: Path) -> Path:
+    def screenshot(
+        self,
+        output_file: Path,
+        reporter: StatusReporter | NullReporter = NullReporter(),
+    ) -> Path:
         """Take a screenshot and return the output path."""
         pass
 
     @abstractmethod
-    def start_autoscroll(self, direction: str, cancelled: threading.Event) -> None:
+    def start_autoscroll(
+        self,
+        direction: str,
+        cancelled: threading.Event,
+        reporter: StatusReporter | NullReporter = NullReporter(),
+    ) -> None:
         """Start autoscrolling in the specified direction."""
         pass
 
     @abstractmethod
-    def autoscroll_screenshot(self, output_directory: Path, direction: str, cancelled: threading.Event) -> None:
+    def autoscroll_screenshot(
+        self,
+        output_directory: Path,
+        direction: str,
+        cancelled: threading.Event,
+        reporter: StatusReporter | NullReporter = NullReporter(),
+    ) -> None:
         """Take screenshots while autoscrolling in the specified direction."""
         pass
 

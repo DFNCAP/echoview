@@ -13,10 +13,10 @@ from imagehash import average_hash
 from loguru import logger
 from PIL import Image
 
-from app.devices.devices import ConnectionType, Device, StatusReporter
+from app.devices.devices import ConnectionType, Device, NullReporter, StatusReporter
 from app.devices.ios_product_types import product_type_to_model
 from app.utils.app_info import AppInfo
-from app.utils.generic import say
+from app.utils.generic import get_timestamp, say
 from app.utils.subprocess_helpers import popen, run
 
 
@@ -48,7 +48,7 @@ class iOSDevice(Device):
     def backup(
         self,
         output_directory: Path,
-        reporter: StatusReporter | None = None,
+        reporter: StatusReporter | NullReporter = NullReporter(),
         cancelled: threading.Event | None = None,
     ) -> Path:
         raise NotImplementedError("Backup functionality is not available for iOS devices")
@@ -57,7 +57,10 @@ class iOSDevice(Device):
         raise NotImplementedError("Extract contacts functionality not implemented")
 
     def extract_device_info(
-        self, output_directory: Path, reporter: StatusReporter | None = None, cancelled: threading.Event | None = None
+        self,
+        output_directory: Path,
+        reporter: StatusReporter | NullReporter = NullReporter(),
+        cancelled: threading.Event | None = None,
     ) -> None:
         installed_apps_proc = run(
             [_goios(), "--udid", self.identifier, "apps", "--list"], capture_output=True, text=True
@@ -89,18 +92,22 @@ class iOSDevice(Device):
     def extract_device_logs(
         self,
         output_directory: Path,
-        reporter: StatusReporter | None = None,
+        reporter: StatusReporter | NullReporter = NullReporter(),
         cancelled: threading.Event | None = None,
     ) -> None:
         raise NotImplementedError("Extract device logs functionality not implemented")
 
-    def screenshot(self, output_file: Path) -> Path:
+    def screenshot(
+        self,
+        output_file: Path,
+        reporter: StatusReporter | NullReporter = NullReporter(),
+    ) -> Path:
         return screenshot(self.identifier, output_file)
 
     def start_screen_recording(
         self,
         output_file: Path,
-        reporter: StatusReporter | None = None,
+        reporter: StatusReporter | NullReporter = NullReporter(),
     ) -> None:
         temp_dir = Path(tempfile.gettempdir())
         temp_file = temp_dir / output_file.name
@@ -137,7 +144,8 @@ class iOSDevice(Device):
                 elif "CLIENT MUST NOW ENTER PIN" in line:
                     reporter.status_changed.emit(self.identifier, "UXPLAY_ENTER_PIN")
                 elif "Begin streaming to GStreamer video pipeline" in line:
-                    reporter.status_changed.emit(self.identifier, "Recording iOS device")
+                    reporter.status_changed.emit(self.identifier, "UXPLAY_STARTED_RECORDING")
+                    reporter.status_changed.emit(self.identifier, f"Recording {self.os} device")
                 elif "Stopped recording" in line:
                     self.recording_process.terminate()
 
@@ -151,7 +159,7 @@ class iOSDevice(Device):
 
     def stop_screen_recording(
         self,
-        reporter: StatusReporter | None = None,
+        reporter: StatusReporter | NullReporter = NullReporter(),
     ) -> None:
         if self.recording_process:
             pid = self.recording_process.pid
@@ -178,12 +186,23 @@ class iOSDevice(Device):
 
             self.recording_process = None
 
-    def start_autoscroll(self, direction: str, cancelled: threading.Event) -> None:
+    def start_autoscroll(
+        self,
+        direction: str,
+        cancelled: threading.Event,
+        reporter: StatusReporter | NullReporter = NullReporter(),
+    ) -> None:
         while not cancelled.is_set():
             scroll(direction)
             cancelled.wait(timeout=2.0)
 
-    def autoscroll_screenshot(self, output_directory: Path, direction: str, cancelled: threading.Event) -> None:
+    def autoscroll_screenshot(
+        self,
+        output_directory: Path,
+        direction: str,
+        cancelled: threading.Event,
+        reporter: StatusReporter | NullReporter = NullReporter(),
+    ) -> None:
         output_directory.mkdir(parents=True, exist_ok=True)
 
         screenshot_count = 0
@@ -192,7 +211,7 @@ class iOSDevice(Device):
 
         while not cancelled.is_set():
             # Take screenshot
-            output_file = output_directory / f"screenshot_{screenshot_count:04d}.png"
+            output_file = output_directory / f"screenshot_{get_timestamp()}.png"
             screenshot(self.identifier, output_file)
             screenshot_count += 1
 

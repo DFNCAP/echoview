@@ -1,6 +1,7 @@
 import sys
 
 from PySide6.QtCore import QObject
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
 from app.controllers.devices_controller import DevicesController
@@ -32,7 +33,28 @@ class AppController(QObject):
 
     def _set_theme(self) -> None:
         self.app.setStyle("Fusion")
-        pass
+
+        storm = QPalette()
+        storm.setColor(QPalette.ColorRole.Window, QColor("#24283b"))
+        storm.setColor(QPalette.ColorRole.WindowText, QColor("#c0caf5"))
+        storm.setColor(QPalette.ColorRole.Base, QColor("#1f2335"))
+        storm.setColor(QPalette.ColorRole.AlternateBase, QColor("#292e42"))
+        storm.setColor(QPalette.ColorRole.ToolTipBase, QColor("#1f2335"))
+        storm.setColor(QPalette.ColorRole.ToolTipText, QColor("#c0caf5"))
+        storm.setColor(QPalette.ColorRole.Text, QColor("#c0caf5"))
+        storm.setColor(QPalette.ColorRole.PlaceholderText, QColor("#565f89"))
+        storm.setColor(QPalette.ColorRole.Button, QColor("#24283b"))
+        storm.setColor(QPalette.ColorRole.ButtonText, QColor("#c0caf5"))
+        storm.setColor(QPalette.ColorRole.BrightText, QColor("#f7768e"))
+        storm.setColor(QPalette.ColorRole.Link, QColor("#7aa2f7"))
+        storm.setColor(QPalette.ColorRole.Highlight, QColor("#7aa2f7"))
+        storm.setColor(QPalette.ColorRole.HighlightedText, QColor("#1f2335"))
+
+        storm.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, QColor("#565f89"))
+        storm.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor("#565f89"))
+        storm.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor("#565f89"))
+        storm.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Highlight, QColor("#3b4261"))
+        self.app.setPalette(storm)
 
     def _create_models(self) -> None:
         self.overview_model = OverviewModel()
@@ -57,15 +79,9 @@ class AppController(QObject):
         )
 
     def _connect_signals(self) -> None:
-        self.overview_controller.output_directory_changed.connect(
-            self.devices_controller.set_output_directory
-        )
-        self.overview_controller.job_number_changed.connect(
-            self.devices_controller.set_job_number
-        )
-        self.overview_controller.device_scan_requested.connect(
-            self.devices_controller.start_scan
-        )
+        self.overview_controller.output_directory_changed.connect(self.devices_controller.set_output_directory)
+        self.overview_controller.job_number_changed.connect(self.devices_controller.set_job_number)
+        self.overview_controller.device_scan_requested.connect(self.devices_controller.start_scan)
 
     def run(self) -> int:
         self.main_window.show()
