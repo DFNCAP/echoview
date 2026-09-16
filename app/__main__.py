@@ -15,10 +15,6 @@
 # nuitka-project-else:
 #   nuitka-project: --mode=standalone
 
-# Version info
-# nuitka-project-if: os.path.exists("{MAIN_DIRECTORY}/../version.xml"):
-#   nuitka-project: --include-data-file={MAIN_DIRECTORY}/../version.xml=version.xml
-
 # scrcpy
 # nuitka-project-if: {OS} == "Linux":
 #   nuitka-project: --include-data-files={MAIN_DIRECTORY}/../scrcpy/scrcpy-linux*.tar.gz=scrcpy/
@@ -52,6 +48,10 @@
 # Icon
 # nuitka-project-if: {OS} == "Windows":
 #   nuitka-project: --windows-icon-from-ico={MAIN_DIRECTORY}/../assets/voice_256x256.png
+
+# README.md
+# nuitka-project: --include-data-files={MAIN_DIRECTORY}/../README.md=README.md
+
 
 import os
 import platform

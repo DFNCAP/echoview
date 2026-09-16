@@ -287,14 +287,8 @@ def build() -> None:
     # Rename the output directory
     build_dir = Path("build")
     dist_dir = build_dir / "app.dist"
-    # target_dir = build_dir / f"EchoView-{version}"
 
     if dist_dir.exists():
-        # if target_dir.exists():
-        #     shutil.rmtree(target_dir)
-        # shutil.move(str(dist_dir), str(target_dir))
-        # click.echo(f"Build complete. Output: {target_dir}")
-
         # Archive the output directory
         if platform == "Linux":
             archive_path = build_dir / f"EchoView-{version}-linux.tar.gz"
