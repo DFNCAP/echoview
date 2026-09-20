@@ -1,9 +1,11 @@
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtCore import QObject, Signal
 
 from app.controllers.overview_controller import OverviewController
 from app.models.overview_model import OverviewModel
+from app.views.overview_view import OverviewView
 
 
 class FakeOverviewView(QObject):
@@ -18,7 +20,7 @@ def test_view_events_update_model_and_are_forwarded(qtbot, tmp_path: Path) -> No
     QObject.__init__(model)
     model._output_directory = Path()
     model._job_number = ""
-    controller = OverviewController(view, model)
+    controller = OverviewController(cast(OverviewView, cast(object, view)), model)
 
     with qtbot.waitSignal(controller.output_directory_changed) as directory_signal:
         view.output_directory_changed.emit(tmp_path)

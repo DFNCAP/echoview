@@ -1,3 +1,4 @@
+import importlib
 import os
 import platform
 import shutil
@@ -10,7 +11,6 @@ from pathlib import Path
 
 from loguru import logger
 
-import app.views.dialogue_box as dialogue
 from app.utils.subprocess_helpers import popen, run
 
 
@@ -51,6 +51,7 @@ def platform_specific_open(path: str | Path) -> None:
                 try:
                     popen(["notepad.exe", path])
                 except Exception as notepad_error:
+                    dialogue = importlib.import_module("app.views.dialogue_box")
                     logger.error(f"Failed to open with notepad: {notepad_error}")
                     dialogue.show_warning(
                         title="Failed to open file",

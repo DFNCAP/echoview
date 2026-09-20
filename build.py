@@ -146,7 +146,7 @@ def _clean() -> None:
     click.echo("Cleaning...")
 
     # Clean directories
-    for dir_to_remove in ["build", ".mypy_cache", ".ruff_cache", "uxplay/UxPlay/build"]:
+    for dir_to_remove in ["build", ".ruff_cache", "uxplay/UxPlay/build"]:
         path = Path(dir_to_remove)
         if path.exists():
             if path.is_dir():

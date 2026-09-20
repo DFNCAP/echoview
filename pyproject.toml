@@ -29,26 +29,6 @@ dev = [
     "basedpyright>=1.40.1",
 ]
 
-[tool.mypy]
-disallow_any_generics = true
-disallow_incomplete_defs = true
-disallow_untyped_calls = true
-disallow_untyped_decorators = true
-disallow_untyped_defs = true
-pretty = true
-warn_redundant_casts = true
-warn_unused_configs = true
-warn_unused_ignores = true
-exclude = ['venv', '.venv', 'submodules']
-
-[[tool.mypy.overrides]]
-module = ['pytestqt.qtbot', 'zstandard']
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["tests.*"]
-disable_error_code = ["arg-type", "attr-defined", "no-untyped-def", "var-annotated"]
-
 [tool.ruff]
 # Defaults to Black like
 line-length = 120
@@ -85,7 +65,12 @@ skip_covered = true
 fail_under = 80
 
 [tool.pyright]
+include = ["app", "tests", "build.py"]
+exclude = ["venv", ".venv", "submodules"]
+pythonVersion = "3.12"
 pythonPlatform = "All"
+typeCheckingMode = "recommended"
+failOnWarnings = false
 
 [build-system]
 requires = ["hatchling", "uv-dynamic-versioning"]

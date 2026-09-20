@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import cast
 from unittest.mock import Mock
 
 import pytest
@@ -7,6 +8,7 @@ from PySide6.QtCore import QObject, Signal
 from app.controllers import devices_controller
 from app.devices.devices import OperationType
 from app.models.devices_model import DevicesModel
+from app.views.devices_view import DevicesView
 
 
 class FakeView(QObject):
@@ -57,7 +59,7 @@ def controller(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(devices_controller.ios, "start_ios_tunnel", Mock(return_value=tunnel))
     view = FakeView()
     model = DevicesModel()
-    instance = devices_controller.DevicesController(view, model)
+    instance = devices_controller.DevicesController(cast(DevicesView, cast(object, view)), model)
     return instance, view, model, runner, monitor, tunnel
 
 

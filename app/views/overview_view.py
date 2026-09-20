@@ -1,6 +1,5 @@
 from pathlib import Path
 
-from loguru import logger
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
@@ -42,7 +41,7 @@ class OverviewView(QWidget):
         self._logo = self._create_logo()
         layout.addWidget(self._logo)
 
-        self._file_selector = self._create_file_selector()
+        self._file_selector, self._dir_entry = self._create_file_selector()
         layout.addWidget(self._file_selector)
 
         self._job_number = self._create_job_number_field()
@@ -69,14 +68,14 @@ class OverviewView(QWidget):
 
         return logo
 
-    def _create_file_selector(self) -> QWidget:
+    def _create_file_selector(self) -> tuple[QWidget, QLineEdit]:
         layout = QHBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(1)
-        self._dir_entry = QLineEdit(placeholderText="Output Directory")
-        self._dir_entry.editingFinished.connect(self._on_output_directory_changed)
+        dir_entry = QLineEdit(placeholderText="Output Directory")
+        dir_entry.editingFinished.connect(self._on_output_directory_changed)
 
-        layout.addWidget(self._dir_entry)
+        layout.addWidget(dir_entry)
 
         btn = QPushButton()
         btn.setToolTip("Select Directory")
@@ -89,7 +88,7 @@ class OverviewView(QWidget):
         widget.setLayout(layout)
         widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        return widget
+        return widget, dir_entry
 
     def _pick_directory(self) -> None:
         path = QFileDialog.getExistingDirectory(

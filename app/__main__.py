@@ -147,10 +147,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     debug_file_path = AppInfo().app_storage_folder / "DEBUG"
-    if debug_file_path.exists() and debug_file_path.is_file() or (len(sys.argv) > 1 and sys.argv[1] == "--debug"):
-        DEBUG_MODE = True
-    else:
-        DEBUG_MODE = False
+    DEBUG_MODE = debug_file_path.is_file() or (len(sys.argv) > 1 and sys.argv[1] == "--debug")
 
     log_file = AppInfo().user_log_folder / (AppInfo().app_name + ".log")
     old_log_file = AppInfo().user_log_folder / (AppInfo().app_name + ".old.log")

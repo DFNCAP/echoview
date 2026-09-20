@@ -35,6 +35,8 @@ class DeviceWidget(QWidget):
 
         self._device = device
         self._status = ""
+        self._persistent_status = ""
+        self._recording_action = False
         self._autoscroll_active = False
         self._recording_active = False
         self._autoscroll_screenshot_active = False

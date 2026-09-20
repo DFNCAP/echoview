@@ -1,5 +1,3 @@
-from collections.abc import Callable
-
 from loguru import logger
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
@@ -128,7 +126,7 @@ class DevicesView(QWidget):
         if device_id in self._device_widget_map:
             self._device_widget_map[device_id].set_busy(operation)
 
-    def get_widget(self, identifier: str) -> QWidget | None:
+    def get_widget(self, identifier: str) -> DeviceWidget | None:
         return self._device_widget_map.get(identifier)
 
     @Slot(str, str)
