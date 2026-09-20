@@ -1,2 +1,3 @@
-*.msi
-*.exe
+*
+!.gitignore
+!README.md

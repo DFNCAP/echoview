@@ -20,11 +20,13 @@ dependencies = [
 dev = [
     "imageio>=2.37.3",
     "lxml-stubs>=0.5.1",
-    "mypy>=1.20.2",
     "pytest>=8.4.1",
     "ruff>=0.15.12",
     "dunamai>=1.26.1",
     "nuitka>=4.1",
+    "pytest-qt>=4.5.0",
+    "pytest-cov>=6.2.1",
+    "basedpyright>=1.40.1",
 ]
 
 [tool.mypy]
@@ -43,13 +45,17 @@ exclude = ['venv', '.venv', 'submodules']
 module = ['pytestqt.qtbot', 'zstandard']
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disable_error_code = ["arg-type", "attr-defined", "no-untyped-def", "var-annotated"]
+
 [tool.ruff]
 # Defaults to Black like
 line-length = 120
 indent-width = 4
 lint.extend-select = ["I"]
-exclude = ["submodules"]
-unfixable=["F401"]
+lint.exclude = ["submodules"]
+lint.unfixable=["F401"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -57,12 +63,26 @@ quote-style = "double"
 [tool.pytest.ini_options]
 addopts = [
     "--import-mode=importlib",
+    "--strict-markers",
 ]
-pythonpath = '.'
-testpaths = ['tests']
+pythonpath = "."
+testpaths = ["tests"]
+markers = [
+    "integration: mocked multi-component integration tests",
+]
 
 # exclude submodules from test discovery
-norecursedirs = ['submodules']
+norecursedirs = ["submodules"]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+omit = ["app/_version.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 80
 
 [tool.pyright]
 pythonPlatform = "All"

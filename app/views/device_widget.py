@@ -1,3 +1,5 @@
+from typing import final
+
 from loguru import logger
 from PySide6.QtCore import Signal, Slot
 from PySide6.QtGui import QPalette
@@ -19,6 +21,7 @@ from app.devices.devices import ConnectionType, Device, OperationType
 from app.views.dialogue_box import show_warning
 
 
+@final
 class DeviceWidget(QWidget):
     """Widget for displaying a single device with screenshot button."""
 
@@ -136,7 +139,7 @@ class DeviceWidget(QWidget):
     def _make_exhibit_number_input(self, layout: QVBoxLayout) -> QLineEdit:
         exhibit_number = QLineEdit(placeholderText="Exhibit Number")
         exhibit_number.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        exhibit_number.editingFinished.connect(self._on_exhibit_number_changed)
+        _ = exhibit_number.editingFinished.connect(self._on_exhibit_number_changed)
         layout.addWidget(exhibit_number)
 
         return exhibit_number
@@ -150,7 +153,7 @@ class DeviceWidget(QWidget):
         btn = QPushButton(label)
         bar = QProgressBar(minimum=0, maximum=0)
         bar.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        btn.clicked.connect(lambda: self._on_action_row_clicked(btn, bar, operation))
+        _ = btn.clicked.connect(lambda: self._on_action_row_clicked(btn, bar, operation))
         bar.hide()
         layout.addWidget(btn)
         layout.addWidget(bar)
@@ -190,7 +193,7 @@ class DeviceWidget(QWidget):
         btn = QPushButton(btn_label)
         combo = QComboBox()
         combo.addItems(combo_labels)
-        btn.clicked.connect(lambda: self._on_combo_row_clicked(btn, combo, operation))
+        _ = btn.clicked.connect(lambda: self._on_combo_row_clicked(btn, combo, operation))
 
         sublayout.addWidget(btn)
         sublayout.addWidget(combo)
