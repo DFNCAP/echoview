@@ -54,13 +54,72 @@ def controller(monkeypatch: pytest.MonkeyPatch):
     runner = FakeRunner()
     monitor = FakeMonitor()
     tunnel = Mock()
+    tunnel.poll.return_value = None
     monkeypatch.setattr(devices_controller, "DeviceOperationRunner", lambda: runner)
     monkeypatch.setattr(devices_controller, "USBMonitor", lambda: monitor)
+    monkeypatch.setattr(devices_controller.ios, "usbmuxd_available", Mock(return_value=True))
     monkeypatch.setattr(devices_controller.ios, "start_ios_tunnel", Mock(return_value=tunnel))
     view = FakeView()
     model = DevicesModel()
     instance = devices_controller.DevicesController(cast(DevicesView, cast(object, view)), model)
     return instance, view, model, runner, monitor, tunnel
+
+
+def test_tunnel_waits_for_usbmuxd(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = FakeRunner()
+    monitor = FakeMonitor()
+    tunnel = Mock()
+    tunnel.poll.return_value = None
+    start_tunnel = Mock(return_value=tunnel)
+    monkeypatch.setattr(devices_controller, "DeviceOperationRunner", lambda: runner)
+    monkeypatch.setattr(devices_controller, "USBMonitor", lambda: monitor)
+    monkeypatch.setattr(devices_controller.ios, "start_ios_tunnel", start_tunnel)
+    usbmuxd_available = Mock(side_effect=[False, False, True])
+    monkeypatch.setattr(devices_controller.ios, "usbmuxd_available", usbmuxd_available)
+    monkeypatch.setattr(devices_controller.android, "get_connected_devices", Mock(return_value=[]))
+    monkeypatch.setattr(devices_controller.ios, "get_connected_devices", Mock(return_value=[]))
+    view = FakeView()
+
+    instance = devices_controller.DevicesController(
+        cast(DevicesView, cast(object, view)),
+        DevicesModel(),
+    )
+
+    view.show_operation_waring.assert_not_called()
+    start_tunnel.assert_not_called()
+
+    instance.start_scan()
+    runner.submissions[-1][2]()
+    view.show_operation_waring.assert_not_called()
+    start_tunnel.assert_not_called()
+
+    instance.start_scan()
+    runner.submissions[-1][2]()
+    start_tunnel.assert_called_once()
+    assert instance._go_ios_tunnel_proc is tunnel
+
+
+def test_shutdown_without_ios_tunnel(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = FakeRunner()
+    monitor = FakeMonitor()
+    monkeypatch.setattr(devices_controller, "DeviceOperationRunner", lambda: runner)
+    monkeypatch.setattr(devices_controller, "USBMonitor", lambda: monitor)
+    monkeypatch.setattr(devices_controller.ios, "usbmuxd_available", Mock(return_value=False))
+    stop_tunnel = Mock()
+    kill_server = Mock()
+    monkeypatch.setattr(devices_controller.ios, "stop_ios_tunnel", stop_tunnel)
+    monkeypatch.setattr(devices_controller.android, "kill_server", kill_server)
+    view = FakeView()
+    instance = devices_controller.DevicesController(
+        cast(DevicesView, cast(object, view)),
+        DevicesModel(),
+    )
+
+    instance.shutdown()
+
+    stop_tunnel.assert_not_called()
+    kill_server.assert_called_once()
+    runner.shutdown.assert_called_once()
 
 
 def test_scan_combines_platform_devices(
@@ -135,18 +194,16 @@ def test_operation_failure_warns_and_resets(controller) -> None:
     view.show_operation_waring.assert_called_with("BACKUP failed", "failed")
 
 
-def test_usb_scan_is_debounced(controller, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_usb_scan_is_deferred(controller) -> None:
     instance, _, _, _, _, _ = controller
-    scan = Mock()
-    instance.start_scan = scan
-    times = iter([10.0, 10.5, 11.1])
-    monkeypatch.setattr(devices_controller.time, "time", lambda: next(times))
+    instance._usb_scan_timer = Mock()
 
-    instance._trigger_scan()
-    instance._trigger_scan()
-    instance._trigger_scan()
+    instance._schedule_usb_scan(True)
+    assert instance._pending_usb_connect
+    instance._usb_scan_timer.start.assert_called_once_with(2000)
 
-    assert scan.call_count == 2
+    instance._schedule_usb_scan(False)
+    instance._usb_scan_timer.start.assert_called_with(500)
 
 
 def test_cancel_stops_recording(controller, android_device) -> None:
@@ -348,9 +405,10 @@ def test_enable_devmode_declined_and_accepted(controller, monkeypatch: pytest.Mo
     mount.assert_called_once_with("ios-1")
 
 
-def test_usb_callbacks_trigger_scan(controller) -> None:
+def test_usb_callbacks_emit_events(controller) -> None:
     instance, _, _, _, _, _ = controller
-    instance._trigger_scan = Mock()
+    spy = Mock()
+    instance.usb_event.connect(spy)
     instance._on_usb_connect("id", {})
     instance._on_usb_disconnect("id", {})
-    assert instance._trigger_scan.call_count == 2
+    assert [call.args for call in spy.call_args_list] == [(True,), (False,)]

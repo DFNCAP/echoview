@@ -223,4 +223,8 @@ if __name__ == "__main__":
         logger.error("Failed to install Apple Mobile Device Support")
         sys.exit(1)
 
+    if SYSTEM == "Linux" and not install_thirdparty.check_usbmuxd():
+        logger.error("usbmuxd not installed")
+        sys.exit(1)
+
     main_thread()

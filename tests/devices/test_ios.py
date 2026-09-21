@@ -119,11 +119,41 @@ def test_stop_recording_escalates_on_timeout(monkeypatch: pytest.MonkeyPatch, io
 def test_tunnel_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
     process = Mock()
     monkeypatch.setattr(ios, "_goios", lambda: "ios")
+    monkeypatch.setattr(ios.platform, "system", lambda: "Windows")
     popen = Mock(return_value=process)
     monkeypatch.setattr(ios, "popen", popen)
     assert ios.start_ios_tunnel() is process
     ios.stop_ios_tunnel(process)
     process.terminate.assert_called_once()
+
+
+def test_usbmuxd_available_when_service_active(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ios, "run", Mock(return_value=Mock(returncode=0)))
+    monkeypatch.setattr(ios.platform, "system", lambda: "Linux")
+    assert ios.usbmuxd_available() is True
+
+
+def test_usbmuxd_unavailable_when_service_inactive(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ios, "run", Mock(return_value=Mock(returncode=3)))
+    monkeypatch.setattr(ios.platform, "system", lambda: "Linux")
+    assert ios.usbmuxd_available() is False
+
+
+def test_tunnel_skipped_when_usbmuxd_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ios, "run", Mock(return_value=Mock(returncode=3)))
+    monkeypatch.setattr(ios.platform, "system", lambda: "Linux")
+    popen = Mock()
+    monkeypatch.setattr(ios, "popen", popen)
+    assert ios.start_ios_tunnel() is None
+    popen.assert_not_called()
+
+
+def test_usbmuxd_check_is_skipped_outside_linux(monkeypatch: pytest.MonkeyPatch) -> None:
+    run = Mock()
+    monkeypatch.setattr(ios, "run", run)
+    monkeypatch.setattr(ios.platform, "system", lambda: "Windows")
+    assert ios.usbmuxd_available() is True
+    run.assert_not_called()
 
 
 def test_start_screen_recording_parses_status_and_moves_files(

@@ -19,8 +19,9 @@ If inbound connections are disabled, a new inbound rule should be created:
 9. Restart the server and try to connect again.
 
 # Running on Linux
+Install the following dependencies before running:
 ```bash
-sudo apt install sudo apt install gstreamer1.0-plugins-base gstreamer1.0-libav gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
+sudo apt install gstreamer1.0-plugins-base gstreamer1.0-libav gstreamer1.0-plugins-good gstreamer1.0-plugins-bad usbmuxd
 ```
 
 ## License

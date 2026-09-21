@@ -1,4 +1,5 @@
 import platform
+import shutil
 import subprocess
 import zipfile
 from pathlib import Path
@@ -9,6 +10,17 @@ from app.utils.app_info import AppInfo
 from app.utils.generic import extract, extract_and_strip
 
 SYSTEM = platform.system()
+
+
+def check_usbmuxd() -> bool:
+    if SYSTEM != "Linux":
+        return True
+
+    if shutil.which("usbmuxd") is None:
+        logger.warning("usbmuxd executable not found")
+        return False
+
+    return True
 
 
 def unpack_scrcpy() -> bool:

@@ -92,7 +92,7 @@ def extract_and_strip(archive: Path, destination: Path) -> None:
                 zip_ref.extractall(temp_path)
         elif archive.suffixes == [".tar", ".gz"] or archive.name.endswith(".tar.gz"):
             with tarfile.open(archive, "r:gz") as tar_ref:
-                tar_ref.extractall(temp_path)
+                tar_ref.extractall(temp_path, filter="data")
         else:
             raise ValueError(f"Unsupported archive format: {archive}")
 
@@ -116,7 +116,7 @@ def extract(archive: Path, destination: Path) -> None:
             zip_ref.extractall(destination)
     elif archive.suffixes == [".tar", ".gz"] or archive.name.endswith(".tar.gz"):
         with tarfile.open(archive, "r:gz") as tar_ref:
-            tar_ref.extractall(destination)
+            tar_ref.extractall(destination, filter="data")
     else:
         raise ValueError(f"Unsupported archive format: {archive}")
 

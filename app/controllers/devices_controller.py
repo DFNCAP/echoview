@@ -1,12 +1,11 @@
 import subprocess
 import threading
-import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from loguru import logger
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from usbmonitor import USBMonitor  # type: ignore[import-untyped]
 
 from app.devices import android, ios
@@ -52,6 +51,9 @@ class DeviceOperationRunner(QObject):
 
 
 class DevicesController(QObject):
+    # Emitted from the USB monitor thread; marshals events onto the GUI thread
+    usb_event = Signal(bool)  # True = connect, False = disconnect
+
     def __init__(self, view: DevicesView, model: DevicesModel) -> None:
         super().__init__()
 
@@ -65,7 +67,8 @@ class DevicesController(QObject):
 
         self._runner = DeviceOperationRunner()
         self._cancelled = threading.Event()
-        self._go_ios_tunnel_proc: subprocess.Popen[bytes] | None = ios.start_ios_tunnel()
+        self._go_ios_tunnel_proc: subprocess.Popen[bytes] | None = None
+        self._refresh_ios_tunnel()
 
         self._view.operation_requested.connect(self._on_operation_requested)
         self._view.combo_operation_requested.connect(self._combo_operation_requested)
@@ -84,8 +87,14 @@ class DevicesController(QObject):
         # Track running operations per device
         self._device_operations: dict[str, set[OperationType]] = {}
 
-        self._last_usb_scan_time: float = 0.0
-        self._usb_scan_debounce_seconds: float = 1.0
+        # Defer USB-triggered scans: udev events fire at kernel enumeration,
+        # before usbmuxd/adb have registered the device. The timer coalesces
+        # the burst of udev events a plug-in generates.
+        self._usb_scan_timer = QTimer(self)
+        self._usb_scan_timer.setSingleShot(True)
+        self._usb_scan_timer.timeout.connect(self.start_scan)
+        self._pending_usb_connect = False
+        self.usb_event.connect(self._schedule_usb_scan)
 
         self._monitor = USBMonitor()
         self._monitor.start_monitoring(on_connect=self._on_usb_connect, on_disconnect=self._on_usb_disconnect)
@@ -98,19 +107,31 @@ class DevicesController(QObject):
     def set_job_number(self, job_number: str) -> None:
         self._model.job_number = job_number
 
+    def _refresh_ios_tunnel(self) -> None:
+        """Start the iOS tunnel when usbmuxd is up; tear it down when stale."""
+        if ios.usbmuxd_available():
+            # An exited process counts as no tunnel
+            if self._go_ios_tunnel_proc is None or self._go_ios_tunnel_proc.poll() is not None:
+                self._go_ios_tunnel_proc = ios.start_ios_tunnel()
+            return
+
+        self._stop_ios_tunnel()
+
+    def _stop_ios_tunnel(self) -> None:
+        if self._go_ios_tunnel_proc is not None:
+            ios.stop_ios_tunnel(self._go_ios_tunnel_proc)
+            self._go_ios_tunnel_proc = None
+
     @Slot()
     def start_scan(self) -> None:
         logger.debug("Starting device scan")
 
         def scan_operation() -> list[Device]:
-            devices: list[Device] = []
-            android_devices = android.get_connected_devices()
-            if android_devices:
-                devices.extend(android_devices)
+            devices: list[Device] = list(android.get_connected_devices())
 
-            ios_devices = ios.get_connected_devices()
-            if ios_devices:
-                devices.extend(ios_devices)
+            self._refresh_ios_tunnel()
+            if self._go_ios_tunnel_proc is not None:
+                devices.extend(ios.get_connected_devices())
 
             return devices
 
@@ -134,6 +155,10 @@ class DevicesController(QObject):
             self._view.set_scanning(False)
             devices = result if isinstance(result, list) else []
             self._model.devices = devices
+            if self._pending_usb_connect:
+                # iOS devices can take a few seconds to appear in usbmuxd; retry once
+                self._pending_usb_connect = False
+                QTimer.singleShot(2000, self.start_scan)
             return
 
         if operation_type == OperationType.ENABLE_DEV_MODE:
@@ -448,23 +473,24 @@ class DevicesController(QObject):
                 device.recording_process.kill()
                 device.recording_process = None
 
-        if self._go_ios_tunnel_proc:
-            ios.stop_ios_tunnel(self._go_ios_tunnel_proc)
-            self._go_ios_tunnel_proc = None
+        self._stop_ios_tunnel()
 
         self._runner.shutdown()
 
     def _on_usb_connect(self, device_id: str, device_info: dict[str, str | tuple[str, ...]]) -> None:
-        self._trigger_scan()
+        logger.debug(f"USB connect: {device_id}")
+        self.usb_event.emit(True)
 
     def _on_usb_disconnect(self, device_id: str, device_info: dict[str, str | tuple[str, ...]]) -> None:
-        self._trigger_scan()
+        logger.debug(f"USB disconnect: {device_id}")
+        self.usb_event.emit(False)
 
-    def _trigger_scan(self) -> None:
-        now = time.time()
-        if now - self._last_usb_scan_time >= self._usb_scan_debounce_seconds:
-            self._last_usb_scan_time = now
-            self.start_scan()
+    @Slot(bool)
+    def _schedule_usb_scan(self, connected: bool) -> None:
+        if connected:
+            self._pending_usb_connect = True
+        # Newly connected devices need time to enumerate in usbmuxd/adb
+        self._usb_scan_timer.start(2000 if connected else 500)
 
     def _generate_output_directory(self, device: Device) -> Path:
         parts: list[str | Path] = [self._model.output_directory]

@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (
 )
 
 from app.utils.app_info import AppInfo
+from app.views.devices_view import DevicesView
+from app.views.overview_view import OverviewView
 
 
 class TextProgressBar(QProgressBar):
@@ -20,7 +22,7 @@ class TextProgressBar(QProgressBar):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, overview: QWidget, devices: QWidget) -> None:
+    def __init__(self, overview: OverviewView, devices: DevicesView) -> None:
         super().__init__()
         self.setWindowTitle(f"EchoView | {AppInfo().app_version}")
         self.resize(1000, 600)

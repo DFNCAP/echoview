@@ -12,6 +12,22 @@ def _app_info(root: Path) -> SimpleNamespace:
     return SimpleNamespace(application_folder=root)
 
 
+@pytest.mark.parametrize(
+    ("system", "executable", "expected"),
+    [("Linux", "/usr/sbin/usbmuxd", True), ("Linux", None, False), ("Windows", None, True)],
+)
+def test_check_usbmuxd(monkeypatch: pytest.MonkeyPatch, system: str, executable: str | None, expected: bool) -> None:
+    which = Mock(return_value=executable)
+    monkeypatch.setattr(install_thirdparty, "SYSTEM", system)
+    monkeypatch.setattr(install_thirdparty.shutil, "which", which)
+
+    assert install_thirdparty.check_usbmuxd() is expected
+    if system == "Linux":
+        which.assert_called_once_with("usbmuxd")
+    else:
+        which.assert_not_called()
+
+
 def test_unpack_scrcpy_when_already_present(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = tmp_path / "scrcpy"
     source.mkdir()

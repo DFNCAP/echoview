@@ -126,7 +126,7 @@ class DevicesView(QWidget):
         if device_id in self._device_widget_map:
             self._device_widget_map[device_id].set_busy(operation)
 
-    def get_widget(self, identifier: str) -> DeviceWidget | None:
+    def get_widget(self, identifier: str) -> QWidget | None:
         return self._device_widget_map.get(identifier)
 
     @Slot(str, str)

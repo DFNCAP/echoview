@@ -266,7 +266,7 @@ def get_device_info(udid: str) -> dict[Any, Any]:
 
 def screenshot(udid: str, output_file: Path) -> Path:
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    proc = run(
+    run(
         [
             _goios(),
             "--udid",
@@ -346,7 +346,30 @@ def scroll(direction: str) -> None:
     say(command)
 
 
-def start_ios_tunnel() -> subprocess.Popen[bytes]:
+def usbmuxd_available() -> bool:
+    if platform.system() != "Linux":
+        return True
+
+    # Check that usbmuxd service is active instead of checking this socket path
+    proc = run(["systemctl", "is-active", "--quiet", "usbmuxd"], capture_output=True, text=True)
+    if proc.returncode == 0:
+        return True
+
+    # # TODO: Deprecate the following section
+    # for socket_path in USBMUXD_SOCKET_PATHS:
+    #     try:
+    #         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as usbmuxd_socket:
+    #             usbmuxd_socket.connect(str(socket_path))
+    #         return True
+    #     except OSError:
+    #         continue
+
+    return False
+
+
+def start_ios_tunnel() -> subprocess.Popen[bytes] | None:
+    if not usbmuxd_available():
+        return None
     return popen([_goios(), "tunnel", "start", "--userspace"])
 
 
