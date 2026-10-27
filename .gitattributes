@@ -1,14 +1,20 @@
-# Set the default behavior to automatically normalize line endings
+# Normalize text files to LF in the repo; let Git decide what's text
 * text=auto
 
-# Explicitly ensure shell scripts always use Linux line endings (LF)
-*.sh text eol=lf
+# Force LF in the working tree for things that must be LF on every OS
+*.sh      text eol=lf
+*.py      text eol=lf
+*.go      text eol=lf
+Makefile  text eol=lf
 
-# Explicitly ensure Windows batch files always use Windows line endings (CRLF)
-*.bat text eol=crlf
-*.cmd text eol=crlf
+# Force CRLF for things that need it on Windows
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+*.ps1     text eol=crlf
 
-# Mark files that must remain binary and untouched
-*.png binary
-*.jpg binary
-*.gif binary
+# Binaries: never touch
+*.png     binary
+*.jpg     binary
+*.zip     binary
+*.dll     binary
+*.exe     binary
