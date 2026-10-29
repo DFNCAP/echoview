@@ -12,7 +12,7 @@ device info/log extraction. It is a single-user tool, not a web service.
 ## Environment
 
 - **Python**: exactly `3.12.*` (pinned in `pyproject.toml` and `.python-version`).
-- **Package manager**: `uv`. Run *everything* through `uv run ...` so the venv is
+- **Package manager**: `uv`. Run _everything_ through `uv run ...` so the venv is
   activated. Install dev tooling with `uv sync --group dev`.
 - **Platforms**: Windows and Linux are the supported runtime targets. Code branches on
   `platform.system()` / `sys.platform`; there is no documented macOS runtime path even
@@ -20,17 +20,17 @@ device info/log extraction. It is a single-user tool, not a web service.
 
 ## Common commands
 
-| Task | Command |
-| --- | --- |
-| Build (fetches runtime deps, runs Nuitka, archives output) | `uv run build.py` |
-| Run in dev mode | `uv run -m app` |
-| Run via build script | `uv run build.py run` |
-| Clean build artifacts | `uv run build.py clean` (adds `.venv` with `clean_all`) |
-| Run tests | `uv run pytest` |
-| Run one test file / case | `uv run pytest tests/devices/test_android.py` / `... -k <name>` |
-| Lint | `uv run ruff check .` |
-| Format | `uv run ruff format .` |
-| Type check | `uv run basedpyright` |
+| Task                                                       | Command                                                         |
+| ---------------------------------------------------------- | --------------------------------------------------------------- |
+| Build (fetches runtime deps, runs Nuitka, archives output) | `uv run build.py`                                               |
+| Run in dev mode                                            | `uv run -m app`                                                 |
+| Run via build script                                       | `uv run build.py run`                                           |
+| Clean build artifacts                                      | `uv run build.py clean` (adds `.venv` with `clean_all`)         |
+| Run tests                                                  | `uv run pytest`                                                 |
+| Run one test file / case                                   | `uv run pytest tests/devices/test_android.py` / `... -k <name>` |
+| Lint                                                       | `uv run ruff check .`                                           |
+| Format                                                     | `uv run ruff format .`                                          |
+| Type check                                                 | `uv run basedpyright`                                           |
 
 Note: `uv run -m app` only works after `build.py` has run at least once, because it
 fetches/unpacks the third-party tooling.
@@ -105,7 +105,7 @@ submodules/UxPlay/   Git submodule (iOS AirPlay); excluded from lint/test discov
 `build.py` fetches and, at startup, `app/utils/install_thirdparty.py` unpacks:
 **go-ios** (iOS, MIT), **scrcpy + adb** (Android, Apache-2.0), **UxPlay** (iOS AirPlay),
 and on Windows **wintun** + **Bonjour / AppleMobileDeviceSupport**. Linux additionally
-needs `usbmuxd` and the gstreamer plugins (see `README.md`). Windows Apple support
+needs `usbmuxd` and the gstreamer plugins (see `DEVELOPMENT.md`). Windows Apple support
 requires manually extracting MSIs into `apple/` — see `apple/README.md`.
 
 ## Gotchas / do-not-touch
